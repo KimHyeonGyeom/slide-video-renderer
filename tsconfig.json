@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    // ESM 프로젝트 ("type": "module"). @hyperframes/producer 가 ESM 전용이라 CommonJS 로는 불러올 수 없다.
+    // 상대 import 는 반드시 ".js" 확장자를 붙인다 (예: import { AppModule } from './app.module.js').
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "sourceMap": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "strict": true,
+    "strictPropertyInitialization": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "incremental": true
+  },
+  "include": ["src/**/*.ts"]
+}

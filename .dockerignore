@@ -1,0 +1,8 @@
+node_modules
+dist
+work
+fixtures
+.env
+.git
+.claude
+*.md

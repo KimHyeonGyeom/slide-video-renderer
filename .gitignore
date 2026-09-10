@@ -1,0 +1,16 @@
+node_modules/
+dist/
+work/
+.env
+
+# npm run fixture 가 만드는 생성물 (머신별 절대경로가 들어 있음)
+fixtures/sample/
+
+# 실제 덱 테스트 묶음 (deck-prepare 생성물: 이미지·음성·mp4)
+fixtures/deck/
+
+# 빌드 산출물
+*.tsbuildinfo
+
+# 로컬 도구 설정 (머신별 절대경로)
+.claude/
