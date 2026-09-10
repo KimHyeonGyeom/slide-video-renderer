@@ -277,7 +277,11 @@ Service 는 어느 파드가 바쁜지 모르고 무작위로 뿌리므로 파�
 
 **타임아웃.** `RENDER_TIMEOUT_MS` 는 렌더가 실제로 시작된 뒤부터 잰다. 대기 시간에는 상한을 두지 않으며, 실제 상한은 호출 측과 앞단(Ingress)의 타임아웃이다(§12). 기다리는 동안 호출 측이 연결을 끊으면 그 요청은 슬롯을 받았을 때 건너뛴다.
 
-**종료(SIGTERM).** 새 연결은 받지 않고, 진행 중 렌더와 대기열을 `terminationGracePeriodSeconds` 안에서 계속 처리한다. 유예가 끝나면 남은 것은 실패한다(§12).
+**종료(SIGTERM).** 실측으로 확인한 동작 (2026-09-10):
+
+- 렌더 중이 아닐 때: Nest 종료 훅이 돌고 깨끗하게 종료된다.
+- **렌더 중일 때: 그 요청이 500 `RENDER_FAILED` 로 실패한다.** puppeteer 의 기본값 `handleSIGTERM: true` 가 Chrome 을 즉시 닫아 캡처가 "detached Frame" 으로 깨진다. 브라우저를 띄우는 곳이 `@hyperframes/engine` 이라 우리 코드에서 이 옵션을 끌 수 없다.
+- 대책은 **SIGTERM 이 오기 전에 큐를 비우는 것**: 쿠버네티스 `preStop` 훅에서 `/health` 의 `rendering`·`queued` 가 0 이 될 때까지 기다린다. k8s 는 preStop 이 끝난 뒤 SIGTERM 을 보내므로 진행 중 렌더가 보존된다 (§12). preStop 없이 배포하면 진행 중이던 요청 1건이 500 을 받는다.
 
 ## 10. 설정
 
@@ -357,6 +361,7 @@ Dockerfile 은 Debian 저장소를 HTTPS 로 바꿔 쓴다. 일부 네트워크(
 | 호출 경로 | 클러스터 안에서 **ClusterIP Service 로 직접 호출** 권장. Ingress 를 거치면 `proxy-read-timeout` 을 **900s 이상**으로 | 동기 요청이 대기 포함 수 분. nginx 기본 60s 에 끊김 |
 | 호출 측 클라이언트 | 응답 대기 타임아웃을 렌더 시간보다 길게 (Node `fetch` 기본 5분, RestTemplate/OkHttp read timeout) | 벤치에서 Node fetch 가 5분에 끊겨 렌더 완료 전 실패한 사례 있음 |
 | 종료 유예 | `terminationGracePeriodSeconds: 660` 이상 | 기본 30s 면 배포·스케일다운마다 진행 중 렌더가 죽음. 대기열까지 비우려면 더 길게 |
+| **preStop 훅** | `/health` 의 `rendering`·`queued` 가 0 이 될 때까지 대기 (상한 600s) | **필수.** SIGTERM 이 렌더 도중 오면 puppeteer 가 Chrome 을 닫아 그 요청이 500 `RENDER_FAILED` 가 된다 (§9). k8s 는 preStop 이 끝난 뒤 SIGTERM 을 보내므로 큐를 비우면 안전하다 |
 | 볼륨 | NAS 를 PVC 로 마운트 → `outputPath` 가 그 아래. `/app/work` 는 emptyDir. `/dev/shm` 은 `emptyDir(medium: Memory)` 512Mi~1Gi | 결과는 NAS, 작업 폴더는 로컬 디스크. 벤치는 shm 256m 에서도 문제 없었지만 여유를 둔다 |
 | 보안 정책 | `runAsNonRoot` 강제 시 Chrome 샌드박스 옵션 확인 필요 | 이미지 스모크 테스트에서 확인 (§14) |
 | 프로브 | liveness / readiness 모두 `GET /health` | 응답에 `rendering`, `queued` 포함 |
@@ -398,7 +403,7 @@ curl -s http://localhost:8080/render -H 'Content-Type: application/json' -d @fix
 1. ✅ **스모크 완료 (2026-09-10).** `scripts/smoke.mjs` 로 `executeRenderJob` 실행. 결과: 10.4초 영상(312프레임) → 렌더 9.3초(워커 6) / 9.8초(워커 2) / 10.6초(워커 1→최소 2). CPU 평균 약 2코어. 프로세스 트리 피크 메모리 2.4GB(워커 6) / 1.1GB(워커 2). 효과 4종 프레임 확인. 발견: 인라인 스크립트 재배치(§6), 타임라인 미등록 시 무경고 성공(§7), 워커 auto(§10)
 2. ✅ **Nest 뼈대 완료 (2026-09-10).** DTO(class-validator) → RenderService → HyperframesService → 200. Swagger `/docs` 확인. 400 3종(스키마/없는 입력/start≥end·최소 길이) 확인
 3. ✅ **효과 4종 완료.** 정의를 바로잡음: `zoom` 은 오려낸 조각 확대, `shake` 는 조각 흔들기 (§6). 프레임으로 확인
-4. ✅ **직렬화 완료.** `scripts/api-test.sh` 로 검증: 동시 3건이 `rendering=1 queued=2` 로 순서대로(대기 0/8.8/17.5초), 대기 중 연결 끊긴 요청은 건너뜀, 렌더 도중 SIGTERM 에도 진행 중 요청은 200 후 종료. 20건 테스트는 호출 측 타임아웃(§15-1) 확인 후
+4. ✅ **직렬화 완료.** `scripts/api-test.sh` 로 검증: 동시 3건이 `rendering=1 queued=2` 로 순서대로(대기 0/8.8/17.5초), 대기 중 연결 끊긴 요청은 건너뜀, **SIGTERM 은 렌더 중이면 그 요청이 500** (§9, preStop 으로 대응). 20건 테스트는 호출 측 타임아웃(§15-1) 확인 후
 5. NAS HTTP 다운로드 (운영 환경 확정 후)
 6. ✅ **Dockerfile + Docker 벤치 완료 (2026-09-10, arm64 로컬).** 결과: 메모리 피크 0.68~0.80GB (CPU 1~4, 워커 1~4 모두 비슷). 렌더 시간 — 10초 영상: 19/10/9초, 60초 영상: 67/32/25초 (CPU 1/2/4), 300초 영상: 431초(CPU 1)/254초(CPU 2), 240초 영상(객체 3개): 221초(CPU 1, 피크 866MiB)/111초(CPU 2, 피크 699MiB). 2 CPU 컨테이너에 동시 3건 → 순서대로 처리되며 피크 0.69GB 유지(세마포어 확인). 미확인: amd64, non-root 실행
 7. ✅ **README 완료.** 실행·API·스크립트·설정·구조·Spring 대응표·운영 전달 사항·디버깅. 구조 리팩터링(v3.3)과 함께

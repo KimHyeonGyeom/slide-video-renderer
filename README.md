@@ -207,6 +207,7 @@ SLIDES=16 bash scripts/docker-bench.sh "2 2g 2 512m"                     # 5분�
 | 호출 경로 | 클러스터 안에서 **ClusterIP Service 로 직접 호출** 권장. Ingress 를 거치면 `proxy-read-timeout` 900s 이상 | 동기 요청이 대기 포함 수 분. nginx 기본 60s 에 끊김 |
 | 호출 측 클라이언트 | 응답 대기 타임아웃을 **렌더 시간보다 길게** (Node `fetch` 는 기본 5분에 끊김, Java `HttpClient` 는 기본 무제한, RestTemplate/OkHttp 는 read timeout 설정 필요) | 5분짜리 영상은 응답까지 4~6분 걸린다 |
 | 종료 유예 | `terminationGracePeriodSeconds: 660` 이상 | 기본 30s 면 배포·스케일다운마다 진행 중 렌더가 죽음 |
+| **preStop 훅** | `/health` 의 `rendering`·`queued` 가 0 이 될 때까지 대기 (상한 600s) | **필수.** SIGTERM 이 렌더 도중 오면 puppeteer 가 Chrome 을 닫아 그 요청이 500 `RENDER_FAILED` 가 된다. k8s 는 preStop 이 끝난 뒤 SIGTERM 을 보내므로 큐를 비우면 안전하다 |
 | 볼륨 | NAS 를 PVC 로 마운트 → `outputPath` 가 그 아래. `/app/work` 는 emptyDir. `/dev/shm` 은 `emptyDir(medium: Memory)` 1Gi | 결과는 NAS, 작업 폴더는 로컬 디스크, Chrome 은 shm 부족 시 크래시 |
 | 보안 정책 | `runAsNonRoot` 강제 시 Chrome 샌드박스 옵션 확인 | 이미지 스모크 테스트에서 확인 |
 | 프로브 | liveness / readiness 모두 `GET /health` | |

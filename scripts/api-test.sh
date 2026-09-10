@@ -46,12 +46,14 @@ echo "render starts: $before → $(starts) (expect +1)"; grep -o 'client disconn
 
 if [ "${SIGTERM_TEST:-1}" = 1 ]; then
   echo "== SIGTERM during an in-flight render (request must still get 200, then the server exits)"
-  PID=$(pgrep -f 'node dist/main.js' | head -1)
+  # 포트를 실제로 듣고 있는 PID (pgrep -f 는 서버를 띄운 셸 명령줄까지 매치해서 엉뚱한 프로세스를 죽인다)
+  PORT_NUM=${BASE##*:}
+  PID=$(lsof -t -nP -iTCP:"${PORT_NUM%%/*}" -sTCP:LISTEN 2>/dev/null | head -1)
   post -d @$REQ -o work/api-test/s1.json -w 's1 status=%{http_code}\n' &
   sleep 2; kill -TERM "$PID" && echo "SIGTERM → pid $PID"
   sleep 0.5; curl -s --max-time 3 -o /dev/null -w 'health during shutdown: %{http_code} (000 = refused)\n' "$BASE/health"
   wait; printf 's1 '; json work/api-test/s1.json
-  for i in $(seq 1 20); do pgrep -f 'node dist/main.js' >/dev/null || break; sleep 0.5; done
-  pgrep -f 'node dist/main.js' >/dev/null && echo "server still running after 10s (unexpected)" || echo "server exited after the in-flight render completed"
+  for i in $(seq 1 40); do kill -0 "$PID" 2>/dev/null || break; sleep 0.5; done
+  kill -0 "$PID" 2>/dev/null && echo "server still running after 20s (unexpected)" || echo "server exited after the in-flight render completed"
   grep -E 'shutdown' work/server.log | tail -1
 fi
