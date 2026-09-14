@@ -1,0 +1,20 @@
+# 로컬 개발용 Redis + 센티널 1대. 앱은 운영과 똑같이 센티널(localhost:26379)로만 붙는다.
+#   docker compose up -d     (npm run redis)
+# sentinel 은 redis 컨테이너의 네트워크를 같이 써서 마스터 주소를 127.0.0.1:6379 로 알려준다.
+# 그래서 호스트에서 돌리는 앱(포트 매핑)도, 같은 네트워크에 붙인 컨테이너(scripts/docker-bench.sh)도 그 주소로 바로 붙는다.
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+      - '26379:26379'
+  sentinel:
+    image: redis:7-alpine
+    network_mode: 'service:redis'
+    depends_on: [redis]
+    command:
+      - sh
+      - -c
+      - |
+        printf 'sentinel monitor mymaster 127.0.0.1 6379 1\nsentinel down-after-milliseconds mymaster 5000\n' > /tmp/sentinel.conf
+        exec redis-sentinel /tmp/sentinel.conf

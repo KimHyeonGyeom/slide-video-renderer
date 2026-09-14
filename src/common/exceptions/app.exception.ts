@@ -3,7 +3,7 @@ import type { ErrorCodeDef } from './error-code.js';
 export interface AppExceptionOptions {
   /** 기본 메시지 대신 쓸 메시지 */
   message?: string;
-  /** 렌더 작업 id. 응답 본문에 실려 서버 로그와 대조할 수 있다 */
+  /** 렌더 작업 id. 출력 메시지에 실려 워커 로그와 대조할 수 있다 */
   jobId?: string;
   /** 추가 정보 (검증 실패 목록 등) */
   details?: unknown;
@@ -12,7 +12,7 @@ export interface AppExceptionOptions {
 }
 
 /**
- * 서비스 계층이 던지는 유일한 예외 타입. HTTP 로의 변환은 GlobalExceptionFilter 가 한다.
+ * 서비스 계층이 던지는 유일한 예외 타입. 출력 큐 메시지로의 변환은 RenderConsumer 가 한다.
  * Spring 의 BusinessException(ErrorCode) 에 해당.
  */
 export class AppException extends Error {

@@ -1,39 +1,15 @@
 #!/usr/bin/env node
-// deck-prepare 가 만든 묶음을 골라 서버에 호출한다. 결과는 slide-N/out.mp4, result.json, frames.png(검증용 프레임 모음).
-// 사용: node scripts/deck-render.mjs <deckDir> <선택> [--parallel N] [--server http://localhost:8080] [--open]
+// deck-prepare 가 만든 묶음을 골라 입력 큐에 넣고 결과를 기다린다. 결과는 slide-N/out.mp4, result.json, frames.png(검증용 프레임 모음).
+// 사용: node scripts/deck-render.mjs <deckDir> <선택> [--open]
 //   선택: 3 | 1,4,7 | 2-6 | all
-//   --parallel N  N개씩 동시에 요청해 파드 안 대기열을 태운다 (기본 1 = 순차)
+// 고른 슬라이드는 전부 한 번에 큐에 들어가고, 떠 있는 워커 수만큼 동시에 처리된다 (워커 1개면 순차).
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import http from 'node:http';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import sharp from 'sharp';
-
-/**
- * 렌더는 수 분씩 걸리는데 Node 의 fetch(undici)는 응답 헤더를 5분만 기다리고 끊는다.
- * 그래서 타임아웃 없는 node:http 로 호출한다. 호출 측 HTTP 클라이언트도 같은 주의가 필요하다 (README).
- */
-function postJson(url, body) {
-  return new Promise((resolve, reject) => {
-    const data = JSON.stringify(body);
-    const req = http.request(url, { method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(data) }, timeout: 0 }, (res) => {
-      let text = '';
-      res.setEncoding('utf8');
-      res.on('data', (c) => (text += c));
-      res.on('end', () => {
-        try {
-          resolve({ status: res.statusCode, ok: res.statusCode >= 200 && res.statusCode < 300, body: JSON.parse(text) });
-        } catch {
-          reject(new Error(`HTTP ${res.statusCode}: ${text.slice(0, 200)}`));
-        }
-      });
-    });
-    req.on('error', reject);
-    req.end(data);
-  });
-}
+import { connect, submit } from './queue-client.mjs';
 
 const run = promisify(execFile);
 const positional = process.argv.slice(2).filter((a) => !a.startsWith('--'));
@@ -45,11 +21,9 @@ const flag = (name, dflt) => {
 };
 const [deckDir, selection = 'all'] = positional;
 if (!deckDir) {
-  console.error('usage: node scripts/deck-render.mjs <deckDir> <3 | 1,4,7 | 2-6 | all> [--parallel N] [--server url] [--open]');
+  console.error('usage: node scripts/deck-render.mjs <deckDir> <3 | 1,4,7 | 2-6 | all> [--open]');
   process.exit(1);
 }
-const parallel = Number(flag('parallel', 1));
-const server = String(flag('server', 'http://localhost:8080')).replace(/\/$/, '');
 
 // ── 대상 슬라이드 ──
 const available = (await readdir(deckDir))
@@ -71,63 +45,48 @@ if (targets.length === 0) {
   process.exit(1);
 }
 
-// ── 서버 확인 ──
-try {
-  const res = await fetch(`${server}/health`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-} catch (err) {
-  console.error(`server not reachable at ${server}: ${err.message}. 먼저 npm run start:dev`);
-  process.exit(1);
+// ── 큐에 넣고 결과 대기 ──
+const redis = connect();
+const requests = new Map();
+for (const n of targets) {
+  const request = JSON.parse(await readFile(path.join(deckDir, `slide-${n}`, 'request.json'), 'utf8'));
+  request.slideId ??= `slide-${n}`;
+  requests.set(request.slideId, { n, request, started: 0 });
 }
-
-// ── 호출 (parallel 개씩) ──
-console.log(`rendering slides [${targets.join(',')}] parallel=${parallel} → ${server}`);
+console.log(`queueing slides [${targets.join(',')}] → waiting for results`);
+const t0 = Date.now();
 const results = [];
-let next = 0;
-const worker = async () => {
-  while (next < targets.length) {
-    const n = targets[next++];
-    results.push(await renderSlide(n));
-  }
-};
-await Promise.all(Array.from({ length: Math.min(parallel, targets.length) }, worker));
+await submit(
+  redis,
+  [...requests.values()].map((r) => r.request),
+  { onResult: async (msg) => results.push(await onResult(msg)) },
+);
+await redis.quit();
 results.sort((a, b) => a.slide - b.slide);
 
-console.log('\nslide  status  queued   render   audio    objects  warnings');
+console.log(`\nslide  status  render   audio    objects  warnings   (wall ${((Date.now() - t0) / 1000).toFixed(1)}s)`);
 let failed = 0;
 for (const r of results) {
   if (r.ok) {
     console.log(
-      `${String(r.slide).padStart(5)}  200     ${fmt(r.body.queuedMs)}  ${fmt(r.body.renderMs)}  ${String(r.body.durationSec + 's').padEnd(8)} ${String(r.objects).padStart(7)}  ${r.body.warnings.length ? r.body.warnings.join('; ') : '-'}`,
+      `${String(r.slide).padStart(5)}  ok      ${fmt(r.msg.renderMs)}  ${String(r.msg.durationSec + 's').padEnd(8)} ${String(r.objects).padStart(7)}  ${r.msg.warnings.length ? r.msg.warnings.join('; ') : '-'}`,
     );
   } else {
     failed++;
-    console.log(`${String(r.slide).padStart(5)}  ${String(r.status).padEnd(6)}  ${r.error}`);
+    console.log(`${String(r.slide).padStart(5)}  error   ${r.msg.error.code}: ${r.msg.error.message}`);
   }
 }
 if (flag('open', false)) await run('open', [deckDir]);
 process.exit(failed ? 1 : 0);
 
-async function renderSlide(n) {
+async function onResult(msg) {
+  const { n, request } = requests.get(msg.slideId);
   const dir = path.join(deckDir, `slide-${n}`);
-  const request = JSON.parse(await readFile(path.join(dir, 'request.json'), 'utf8'));
-  const started = Date.now();
-  console.log(`  slide ${n}: start (${request.objects.length} objects)`);
-  let res, body;
-  try {
-    res = await postJson(`${server}/render`, request);
-    body = res.body;
-  } catch (err) {
-    await writeFile(path.join(dir, 'result.json'), JSON.stringify({ error: err.message }, null, 2));
-    return { slide: n, ok: false, status: 'ERR', error: err.message };
-  }
-  await writeFile(path.join(dir, 'result.json'), JSON.stringify(body, null, 2));
-  if (!res.ok) {
-    return { slide: n, ok: false, status: res.status, error: `${body.error}: ${Array.isArray(body.message) ? body.message.join('; ') : body.message}` };
-  }
+  await writeFile(path.join(dir, 'result.json'), JSON.stringify(msg, null, 2));
+  if (msg.status !== 'ok') return { slide: n, ok: false, msg };
   await contactSheet(request, path.join(dir, 'out.mp4'), path.join(dir, 'frames.png'));
-  console.log(`  slide ${n}: done in ${((Date.now() - started) / 1000).toFixed(1)}s`);
-  return { slide: n, ok: true, body, objects: request.objects.length };
+  console.log(`  slide ${n}: done (render ${(msg.renderMs / 1000).toFixed(1)}s)`);
+  return { slide: n, ok: true, msg, objects: request.objects.length };
 }
 
 /** 객체마다 강조 중간 시점의 프레임을 뽑아 한 장으로 이어 붙인다 (한 줄에 4개) */

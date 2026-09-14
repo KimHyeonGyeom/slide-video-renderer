@@ -1,4 +1,3 @@
-import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
@@ -64,7 +63,6 @@ export class SlideObjectDto {
   end: number;
 
   /** 효과: box | zoom | shake | zoom-box. 객체끼리 시간이 겹쳐도 된다 */
-  @ApiProperty({ enum: EFFECTS })
   @IsIn(EFFECTS)
   effect: Effect;
 
@@ -74,9 +72,9 @@ export class SlideObjectDto {
   color?: string;
 }
 
-/** POST /render 본문 */
+/** 입력 큐 메시지 (JSON 한 건 = 슬라이드 한 장). 모르는 필드는 버린다 */
 export class RenderRequestDto {
-  /** 로그/응답 식별용 (선택) */
+  /** 호출 측이 결과를 맞춰 볼 식별자 (선택). 출력 메시지에 그대로 실린다 */
   @IsOptional()
   @IsString()
   @MaxLength(128)
@@ -92,7 +90,7 @@ export class RenderRequestDto {
   @IsNotEmpty()
   audio: string;
 
-  /** 결과 mp4 절대경로 (서버/파드 기준). 폴더가 없으면 만들고 같은 파일이 있으면 덮어쓴다 */
+  /** 결과 mp4 절대경로 (워커/파드 기준). 폴더가 없으면 만들고 같은 파일이 있으면 덮어쓴다 */
   @IsString()
   @Matches(/^\/.+\.mp4$/, { message: 'outputPath must be an absolute path ending with .mp4' })
   outputPath: string;

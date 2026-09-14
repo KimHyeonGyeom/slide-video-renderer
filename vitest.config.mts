@@ -6,9 +6,9 @@ export default defineConfig({
   test: {
     globals: true,
     root: './',
-    include: ['src/**/*.spec.ts', 'test/**/*.e2e-spec.ts'],
+    include: ['src/**/*.spec.ts'],
     testTimeout: 20_000,
-    // ConfigModule.forRoot() 는 AppModule 을 import 하는 순간 env 를 읽으므로 테스트 env 는 여기서 정한다
+    // 서비스들이 모듈 로드 시점에 process.env 를 읽으므로 테스트 env 는 여기서 정한다
     env: { NODE_ENV: 'test', LOG_LEVEL: 'silent' },
   },
   plugins: [swc.vite({ module: { type: 'es6' } })],

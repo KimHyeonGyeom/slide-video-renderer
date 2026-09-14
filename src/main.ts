@@ -1,9 +1,6 @@
 import 'dotenv/config'; // .env 를 process.env 로 (없으면 그냥 넘어간다). 다른 import 보다 먼저여야 한다
 import 'reflect-metadata';
-import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import type { Server } from 'node:http';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
 
@@ -13,27 +10,13 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger)); // Nest 내부 로그도 pino 로
 
-  // DTO 검증: 모르는 필드는 버리고(whitelist), 타입을 DTO 클래스로 변환(transform)
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-
-  const openapi = new DocumentBuilder()
-    .setTitle('Slide Video Renderer')
-    .setDescription('PPT 슬라이드 이미지 + 음성 + 객체 좌표(EMU) → 강조 효과가 들어간 mp4')
-    .setVersion('1.0')
-    .build();
-  SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, openapi));
-
-  // 렌더는 대기 포함 수 분이 걸리는 동기 요청. Node 의 요청 타임아웃(기본 300초)을 끈다.
-  const server = app.getHttpServer() as Server;
-  server.requestTimeout = 0;
-  server.headersTimeout = 60_000;
-
-  // SIGTERM: 새 연결을 받지 않고 진행 중 요청이 끝난 뒤 종료.
-  // 단, 렌더 도중 SIGTERM 이 오면 puppeteer 가 Chrome 을 닫아 그 요청은 실패한다 (DESIGN.md §9, k8s preStop 으로 대응)
+  // SIGTERM: RenderConsumer 가 새 작업을 멈추고 진행 중 작업을 끝낸 뒤 종료한다.
+  // 단, 렌더 도중 SIGTERM 이 오면 puppeteer 가 Chrome 을 닫아 그 작업은 실패한다 → k8s 는 preStop 에서 /drain 후 기다린다 (DESIGN.md §9)
   app.enableShutdownHooks();
 
+  // HTTP 는 /health 와 /drain 뿐. 작업은 Redis 입력 큐에서 가져간다 (RenderConsumer)
   await app.listen(PORT);
-  app.get(Logger).log(`listening on :${PORT}  (Swagger: /docs, health: /health)`, 'bootstrap');
+  app.get(Logger).log(`worker up, health on :${PORT}`, 'bootstrap');
 }
 
 bootstrap();
