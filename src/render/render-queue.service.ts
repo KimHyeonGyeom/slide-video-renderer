@@ -1,8 +1,9 @@
-import { Inject, Injectable, OnApplicationShutdown } from '@nestjs/common';
-import type { ConfigType } from '@nestjs/config';
+import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { Semaphore } from '../common/utils/semaphore.util.js';
-import configuration from '../config/configuration.js';
+
+/** 파드당 동시 렌더 수. 쿠버네티스에서는 1 로 두고 replica 로 늘린다 */
+const RENDERS_PER_POD = Number(process.env.RENDERS_PER_POD) || 1;
 
 /** type alias 인 이유: terminus 의 up(data) 가 index signature 를 요구하는데 interface 는 그게 없다 */
 export type QueueStats = {
@@ -13,20 +14,15 @@ export type QueueStats = {
 };
 
 /**
- * 파드당 렌더 수를 RENDERS_PER_POD 로 제한한다 (DESIGN.md §9).
+ * 파드당 렌더 수를 제한한다 (DESIGN.md §9).
  * 요청은 전부 접수하고 여기서 순서대로 기다린다. 기다리는 요청은 프로미스라 메모리를 거의 쓰지 않는다.
  * 쿠버네티스는 파드 수만 정할 수 있고 파드 안의 동시 실행 수는 못 막으므로, "파드 = 렌더 1개" 를 지키는 코드는 이것뿐이다.
  */
 @Injectable()
 export class RenderQueueService implements OnApplicationShutdown {
-  private readonly semaphore: Semaphore;
+  private readonly semaphore = new Semaphore(RENDERS_PER_POD);
 
-  constructor(
-    @Inject(configuration.KEY) config: ConfigType<typeof configuration>,
-    @InjectPinoLogger(RenderQueueService.name) private readonly logger: PinoLogger,
-  ) {
-    this.semaphore = new Semaphore(config.render.rendersPerPod);
-  }
+  constructor(@InjectPinoLogger(RenderQueueService.name) private readonly logger: PinoLogger) {}
 
   /** 슬롯을 얻는다. 반환된 함수로 반납한다. */
   acquire(): Promise<() => void> {

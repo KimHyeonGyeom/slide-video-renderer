@@ -4,7 +4,7 @@
 #  - 정상 렌더 1건
 #  - 동시 요청 3건 (1개 렌더 + 2개 대기 → 전부 200)
 #  - 대기 중 연결 끊김 (끊은 요청의 렌더는 건너뜀)
-#  - 렌더 도중 SIGTERM (진행 중 요청은 200, 서버는 그 뒤 종료)  ※ SIGTERM_TEST=0 이면 생략
+#  - 렌더 도중 SIGTERM (그 요청은 500 으로 실패하고 서버는 종료 — DESIGN.md §9)  ※ SIGTERM_TEST=0 이면 생략
 set -u
 BASE=${BASE:-http://localhost:8080}
 REQ=fixtures/sample/request.json
@@ -45,7 +45,7 @@ wait
 echo "render starts: $before → $(starts) (expect +1)"; grep -o 'client disconnected while queued' work/server.log | tail -1
 
 if [ "${SIGTERM_TEST:-1}" = 1 ]; then
-  echo "== SIGTERM during an in-flight render (request must still get 200, then the server exits)"
+  echo "== SIGTERM during an in-flight render (알려진 동작: 그 요청은 500. puppeteer 가 Chrome 을 닫는다 → k8s 는 preStop 으로 큐를 비울 것)"
   # 포트를 실제로 듣고 있는 PID (pgrep -f 는 서버를 띄운 셸 명령줄까지 매치해서 엉뚱한 프로세스를 죽인다)
   PORT_NUM=${BASE##*:}
   PID=$(lsof -t -nP -iTCP:"${PORT_NUM%%/*}" -sTCP:LISTEN 2>/dev/null | head -1)

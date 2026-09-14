@@ -1,11 +1,14 @@
-import { Inject, Injectable } from '@nestjs/common';
-import type { ConfigType } from '@nestjs/config';
+import { Injectable } from '@nestjs/common';
 import { createRenderJob, executeRenderJob, type ProducerLogger } from '@hyperframes/producer';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import type { Logger } from 'pino';
 import { AppException } from '../common/exceptions/app.exception.js';
 import { ErrorCode } from '../common/exceptions/error-code.js';
-import configuration from '../config/configuration.js';
+
+const FPS = Number(process.env.RENDER_FPS) || 30;
+const QUALITY = (process.env.RENDER_QUALITY || 'standard') as 'draft' | 'standard' | 'high';
+/** hyperframes 캡처 워커 수 (CLI 의 --workers). 안 주면 엔진이 노드 전체 코어 수를 기준으로 늘린다 */
+const WORKERS = Number(process.env.RENDER_WORKERS) || 2;
 
 export interface RenderMp4Options {
   /** 로그용 */
@@ -21,26 +24,23 @@ export interface RenderMp4Result {
 
 /**
  * @hyperframes/producer 호출. hyperframes CLI 의 `render` 명령이 하는 것과 같은 두 함수(createRenderJob, executeRenderJob)를 쓴다.
- * 워커 수(CLI 의 --workers)와 로거를 설정으로 넘긴다. 동시성·타임아웃 정책은 여기 없고 RenderService 에 있다.
+ * 동시성·타임아웃 정책은 여기 없고 RenderService 에 있다.
  */
 @Injectable()
 export class HyperframesService {
   private readonly producerLogger: ProducerLogger;
 
-  constructor(
-    @Inject(configuration.KEY) private readonly config: ConfigType<typeof configuration>,
-    @InjectPinoLogger(HyperframesService.name) private readonly logger: PinoLogger,
-  ) {
+  constructor(@InjectPinoLogger(HyperframesService.name) private readonly logger: PinoLogger) {
     this.producerLogger = toProducerLogger(logger.logger.child({ context: 'hyperframes' }));
   }
 
   /** projectDir/index.html 컴포지션을 outputPath(mp4) 로 렌더한다. */
   async renderMp4(projectDir: string, outputPath: string, options: RenderMp4Options): Promise<RenderMp4Result> {
     const job = createRenderJob({
-      fps: this.config.render.fps,
-      quality: this.config.render.quality,
+      fps: FPS,
+      quality: QUALITY,
       format: 'mp4',
-      workers: this.config.render.workers,
+      workers: WORKERS,
       logger: this.producerLogger,
     });
 

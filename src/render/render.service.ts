@@ -1,12 +1,10 @@
-import { Inject, Injectable } from '@nestjs/common';
-import type { ConfigType } from '@nestjs/config';
+import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import type { Logger } from 'pino';
 import { AppException } from '../common/exceptions/app.exception.js';
 import { ErrorCode } from '../common/exceptions/error-code.js';
 import { audioDurationSec } from '../common/utils/ffprobe.util.js';
-import configuration from '../config/configuration.js';
 import { CompositionBuilder } from '../hyperframes/composition.builder.js';
 import { HyperframesService } from '../hyperframes/hyperframes.service.js';
 import { RenderRequestDto } from './dto/render-request.dto.js';
@@ -14,6 +12,15 @@ import { RenderResponseDto } from './dto/render-response.dto.js';
 import { RenderQueueService } from './render-queue.service.js';
 import { RenderWorkspaceService, Workspace } from './render-workspace.service.js';
 import { mapSlideObjects } from './slide-objects.mapper.js';
+
+const WIDTH = Number(process.env.RENDER_WIDTH) || 1920;
+const HEIGHT = Number(process.env.RENDER_HEIGHT) || 1080;
+const FPS = Number(process.env.RENDER_FPS) || 30;
+/** 렌더 1건 상한(ms). 대기 시간은 포함하지 않는다 */
+const TIMEOUT_MS = Number(process.env.RENDER_TIMEOUT_MS) || 600_000;
+/** PPT 슬라이드 폭(EMU). 16:9 표준 = 12,192,000 → 1920px 기준 1px = 6350 EMU */
+const EMU_PER_PX = (Number(process.env.SLIDE_WIDTH_EMU) || 12_192_000) / WIDTH;
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 interface RenderTiming {
   queuedMs: number;
@@ -35,7 +42,6 @@ interface RenderTiming {
 @Injectable()
 export class RenderService {
   constructor(
-    @Inject(configuration.KEY) private readonly config: ConfigType<typeof configuration>,
     private readonly workspaces: RenderWorkspaceService,
     private readonly queue: RenderQueueService,
     private readonly builder: CompositionBuilder,
@@ -53,10 +59,9 @@ export class RenderService {
       // 요청 필드 ↔ 내부 입력 이름의 대응은 이 한 줄뿐. 요청 JSON 이 바뀌면 DTO 와 이 줄만 바뀐다
       const inputs = await ws.fetchInputs({ slide: dto.slideImage, audio: dto.audio });
       const durationSec = await this.probeDuration(inputs.audio);
-      const { objects, warnings } = mapSlideObjects(dto.objects, durationSec, this.config.render.emuPerPx);
+      const { objects, warnings } = mapSlideObjects(dto.objects, durationSec, EMU_PER_PX);
 
-      const { width, height, fps } = this.config.render;
-      await ws.materialize(await this.builder.build({ inputs, objects, durationSec, width, height, fps }));
+      await ws.materialize(await this.builder.build({ inputs, objects, durationSec, width: WIDTH, height: HEIGHT, fps: FPS }));
 
       const timing = await this.renderQueued(ws, clientSignal, log);
       warnings.push(...timing.engineWarnings);
@@ -75,8 +80,7 @@ export class RenderService {
     } catch (err) {
       const exception = toAppException(err, jobId);
       // 개발 환경에서 렌더 자체가 실패한 경우만 작업 폴더를 남긴다 (400 과 클라이언트 이탈은 남길 게 없다)
-      keepWorkDir =
-        !this.config.app.isProduction && exception.status >= 500 && exception.code !== ErrorCode.CLIENT_DISCONNECTED.code;
+      keepWorkDir = !IS_PRODUCTION && exception.status >= 500 && exception.code !== ErrorCode.CLIENT_DISCONNECTED.code;
       throw exception;
     } finally {
       await ws.cleanup(keepWorkDir);
@@ -103,7 +107,7 @@ export class RenderService {
       if (clientSignal?.aborted) {
         throw new AppException(ErrorCode.CLIENT_DISCONNECTED, { message: 'client disconnected while queued' });
       }
-      const timeout = AbortSignal.timeout(this.config.render.timeoutMs);
+      const timeout = AbortSignal.timeout(TIMEOUT_MS);
       const signal = clientSignal ? AbortSignal.any([timeout, clientSignal]) : timeout;
 
       log.info({ queuedMs }, 'render start');

@@ -40,6 +40,11 @@ v3.4 → v3.5 (2026-09-10 설정 정리)
 - Joi 스키마·설정 서비스 제거 → `config/configuration.ts` 하나(`registerAs`)와 `.env`(로컬, 커밋 안 함) + `.env.example`. 이유: 현업에서 보는 모양이 아니라는 피드백 (§10)
 - 워커 수를 `RENDER_WORKERS` 로 받아 `createRenderJob({ workers })` 에 직접 전달 (CLI `--workers` 와 동일). producer 로거도 `logger` 옵션으로 정식 전달, defaultLogger 바꿔치기 제거 (§7)
 
+v3.5 → v3.6 (2026-09-14)
+
+- 설정 레이어 제거: `config/configuration.ts` 와 `@nestjs/config` 를 빼고 각 파일이 `process.env` 를 직접 읽는다. `.env` 는 `dotenv/config` 가 로드 (§10)
+- SIGTERM 실제 동작 정정: 렌더 중이면 그 요청이 500. k8s `preStop` 으로 큐를 비우는 것이 대책 (§9, §12)
+
 ## 1. 한 줄 요약
 
 `POST /render` 로 **슬라이드 이미지 + 음성(mp3) + 객체 목록(EMU 좌표, start/end, effect)** 을 받아
@@ -68,7 +73,7 @@ HyperFrames HTML 컴포지션을 만들고 `@hyperframes/producer` 로 **음성 
 | 프레임워크 | **NestJS 12** (platform-express) | `@nestjs/config`, `@nestjs/swagger`(CLI 플러그인) |
 | 모듈 | **ESM** (`"type": "module"`, tsconfig `NodeNext`) | producer 가 ESM 전용. 상대 import 는 `.js` 확장자 필수 |
 | 검증 | class-validator + class-transformer | `ValidationPipe({ whitelist: true, transform: true })` |
-| 설정 | `@nestjs/config` `registerAs` | `.env`(로컬) / Deployment env(운영). 그룹 단위 주입 |
+| 설정 | `process.env` + `dotenv` | 각 파일이 직접 읽음. 설정 레이어 없음 |
 | 예외 | `ErrorCode` + `AppException` + `GlobalExceptionFilter` | Spring 의 ErrorCode enum + BusinessException + ControllerAdvice |
 | 로거 | `nestjs-pino` | 운영 JSON, 로컬 pino-pretty. `reqId`/`jobId` 자동 |
 | 헬스 | `@nestjs/terminus` | `/health` (Actuator 대응) |
@@ -193,8 +198,6 @@ HyperFrames 규칙: `paused:true` 타임라인 하나를 `window.__timelines.sli
 src/
 ├─ main.ts                        # bootstrap: pino 로거 교체, ValidationPipe, Swagger(/docs), 서버 타임아웃 해제, enableShutdownHooks
 ├─ app.module.ts                  # AppConfigModule + LoggerModule(pino) + HealthModule + RenderModule, APP_FILTER = GlobalExceptionFilter
-├─ config/
-│  └─ configuration.ts            # registerAs: env → { app: {port, logLevel..}, render: {해상도, fps, workers, rendersPerPod, 타임아웃, 작업폴더, 다운로드 제한, EMU} }
 ├─ common/
 │  ├─ exceptions/error-code.ts    # 에러 코드 표: code → status, 기본 메시지
 │  ├─ exceptions/app.exception.ts # AppException(code, { message?, jobId?, details?, cause? }) — 서비스가 던지는 유일한 예외
@@ -231,7 +234,7 @@ Spring 대응표와 "걸려 넘어질 지점"은 README 에 있다.
 
 - **NestJS 채택.** 개발자는 빠지고 Spring 에 익숙한 사람들이 유지보수한다. Nest 는 Spring Boot 의 계층·용어와 거의 1:1 이고, 순수 Express 는 Spring 사람 눈에 구조 없는 스크립트로 보인다.
 - **예외는 코드 표 + 클래스 하나.** 예외 클래스를 종류별로 나누면(6개) 엔드포인트 하나에 과하다. `ErrorCode` + `AppException` + 전역 필터가 Spring 의 `ErrorCode` enum + `BusinessException` + `@RestControllerAdvice` 와 같은 그림이다.
-- **설정은 env 한 곳, 형태는 현업 관례대로.** 값은 `.env`(로컬)·Deployment env(운영)에 있고 코드는 `registerAs` 로 읽는다. Joi 스키마 파일은 낯설다는 피드백으로 뺐다. 예외는 디자인 값(테두리 색·두께)과 브라우저에서 도는 `effects/*.js` 상수.
+- **설정 레이어 없음.** Joi 스키마 → `registerAs` 설정 모듈 → 최종적으로 각 파일에서 `process.env` 직접 읽기로 정리했다. 엔드포인트 하나짜리 서비스에서 설정 추상화가 값을 못 한다는 판단. 키가 어디서 쓰이는지는 §10 표와 `.env.example` 이 보여준다. 예외는 디자인 값(테두리 색·두께)과 브라우저에서 도는 `effects/*.js` 상수.
 - **로거는 nestjs-pino.** 운영은 JSON 한 줄, 요청마다 `reqId`, 렌더마다 `jobId`/`slideId` 자동 바인딩. producer 의 자체 콘솔 로거는 메서드를 바꿔 pino 로 흘린다(info→debug). 엔진이 `console.log` 로 직접 찍는 줄은 남는다.
 - **ESM.** `@hyperframes/producer` 는 `exports` 에 `import` 조건만 있어 `require()` 가 실패한다. 프로젝트 전체를 ESM 으로 빌드하고(`NodeNext`), 상대 import 에 `.js` 를 붙인다. `p-limit` 도 같은 이유로 자체 `Semaphore`.
 - **빌드는 Nest CLI, 테스트는 Vitest + SWC.** DI 가 `emitDecoratorMetadata` 에 의존한다. `consistent-type-imports` 린트 규칙은 켜지 않는다(생성자 파라미터 타입을 `import type` 으로 바꾸면 DI 가 깨진다).
@@ -285,12 +288,16 @@ Service 는 어느 파드가 바쁜지 모르고 무작위로 뿌리므로 파�
 
 ## 10. 설정
 
-값은 env 로 준다. 로컬은 `.env`(커밋 안 함, `.env.example` 복사), 운영은 Deployment env. 코드는 `config/configuration.ts` 하나가 `registerAs` 로 `process.env` 를 읽어 `{ app, render }` 를 돌려주고 없으면 기본값을 쓴다. 서비스는 `@Inject(configuration.KEY)` 로 주입 (Spring `@ConfigurationProperties`). 검증 스키마는 두지 않는다.
+값은 env 로 준다. 로컬은 `.env`(커밋 안 함, `.env.example` 복사), 운영은 Deployment env. **설정 레이어는 두지 않는다** — 각 파일 맨 위에서 `process.env` 를 직접 읽고 없으면 기본값을 쓴다. `.env` 로딩은 `main.ts` 첫 줄의 `import 'dotenv/config'` 가 맡고, 이미 있는 환경변수가 `.env` 보다 우선한다.
 
-| 그룹 | 키 (기본값) |
+| 키 (기본값) | 읽는 곳 |
 |---|---|
-| app | `PORT`(8080) `NODE_ENV`(development) `LOG_LEVEL`(info) |
-| render | `RENDER_WIDTH`(1920) `RENDER_HEIGHT`(1080) `RENDER_FPS`(30) `RENDER_QUALITY`(standard) **`RENDER_WORKERS`(2)** `RENDERS_PER_POD`(1) `RENDER_TIMEOUT_MS`(600000) `WORK_DIR`(./work) `DOWNLOAD_TIMEOUT_MS`(60000) `MAX_DOWNLOAD_MB`(200) `SLIDE_WIDTH_EMU`(12192000) |
+| `PORT`(8080) | `main.ts` |
+| `NODE_ENV`(development) `LOG_LEVEL`(info) | `app.module.ts` |
+| `RENDER_WIDTH`(1920) `RENDER_HEIGHT`(1080) `RENDER_FPS`(30) `RENDER_TIMEOUT_MS`(600000) `SLIDE_WIDTH_EMU`(12192000) | `render/render.service.ts` |
+| `RENDER_QUALITY`(standard) **`RENDER_WORKERS`(2)** | `hyperframes/hyperframes.service.ts` |
+| `RENDERS_PER_POD`(1) | `render/render-queue.service.ts` |
+| `WORK_DIR`(./work) `DOWNLOAD_TIMEOUT_MS`(60000) `MAX_DOWNLOAD_MB`(200) | `render/render-workspace.service.ts` |
 
 `RENDER_WORKERS` 는 hyperframes 캡처 워커 수로 `createRenderJob({ workers })` 에 직접 넘긴다 (CLI 의 `--workers` 와 같음). 안 주면 엔진 auto 가 노드 전체 코어 수를 기준으로 늘리므로 기본값 2 를 둔다. `PRODUCER_HEADLESS_SHELL_PATH` 는 이미지 entrypoint 가 설정한다.
 

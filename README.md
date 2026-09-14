@@ -104,13 +104,22 @@ npm run deck:render -- fixtures/deck/deck all
 
 ## 설정
 
-값은 env 로 준다. 로컬은 `.env` 파일(커밋하지 않음, `.env.example` 을 복사해서 만든다), 운영은 Deployment env. 코드는 [src/config/configuration.ts](src/config/configuration.ts) 하나가 `process.env` 를 읽고 없으면 기본값을 쓴다. 키 목록과 설명은 [.env.example](.env.example).
+값은 env 로 준다. 로컬은 `.env` 파일(커밋하지 않음), 운영은 Deployment env. 코드는 각 파일 맨 위에서 `process.env` 를 직접 읽고 없으면 기본값을 쓴다. 키 목록과 설명은 [.env.example](.env.example).
 
 ```bash
 cp .env.example .env    # 로컬. 필요한 값만 고친다
 ```
 
-서비스에서는 `@Inject(configuration.KEY) private readonly config: ConfigType<typeof configuration>` 로 받아 `config.app.port`, `config.render.workers` 처럼 쓴다 (Spring 의 `@ConfigurationProperties` 에 해당).
+`.env` 는 [main.ts](src/main.ts) 첫 줄의 `import 'dotenv/config'` 가 읽는다. 이미 있는 환경변수가 `.env` 보다 우선이라, 운영에서는 `.env` 없이 Deployment env 만으로 동작한다.
+
+| 키 | 읽는 곳 |
+|---|---|
+| `PORT` | [main.ts](src/main.ts) |
+| `LOG_LEVEL`, `NODE_ENV` | [app.module.ts](src/app.module.ts) (로거) |
+| `RENDER_WIDTH`, `RENDER_HEIGHT`, `RENDER_FPS`, `RENDER_TIMEOUT_MS`, `SLIDE_WIDTH_EMU` | [render.service.ts](src/render/render.service.ts) |
+| `RENDER_FPS`, `RENDER_QUALITY`, `RENDER_WORKERS` | [hyperframes.service.ts](src/hyperframes/hyperframes.service.ts) |
+| `RENDERS_PER_POD` | [render-queue.service.ts](src/render/render-queue.service.ts) |
+| `WORK_DIR`, `DOWNLOAD_TIMEOUT_MS`, `MAX_DOWNLOAD_MB` | [render-workspace.service.ts](src/render/render-workspace.service.ts) |
 
 쿠버네티스가 넘길 것: `NODE_ENV=production`, `PORT`, `LOG_LEVEL`, `RENDER_WORKERS`(파드 CPU 수에 맞춤, 권장 2). 나머지는 기본값.
 
@@ -121,8 +130,7 @@ cp .env.example .env    # 로컬. 필요한 값만 고친다
 ```
 src/
 ├─ main.ts                        # bootstrap: 로거, ValidationPipe, Swagger, 서버 타임아웃, shutdown hooks
-├─ app.module.ts                  # 모듈 조립 + 전역 예외 필터 + pino 로거 설정
-├─ config/configuration.ts        # env 를 읽어 { app, render } 설정 객체로 (registerAs)
+├─ app.module.ts                  # 모듈 조립 + 전역 예외 필터 + pino 로거 설정 (설정은 각 파일이 process.env 로 직접 읽는다)
 ├─ common/
 │  ├─ exceptions/                 # ErrorCode 표 + AppException (서비스가 던지는 유일한 예외)
 │  ├─ filters/                    # GlobalExceptionFilter: 예외 → HTTP 응답을 만드는 유일한 곳
@@ -163,7 +171,7 @@ src/
 | `@Injectable` 서비스, 생성자 주입 | `@Service`, 생성자 주입 |
 | DTO + class-validator + `ValidationPipe` | DTO + Bean Validation + `@Valid` |
 | `AppException(ErrorCode)` + `GlobalExceptionFilter` | `BusinessException(ErrorCode)` + `@RestControllerAdvice` |
-| `registerAs` 설정 + `@Inject(config.KEY)` | `application.yml` + `@ConfigurationProperties` |
+| 각 파일 맨 위의 `process.env` + `.env` | `application.yml` / 환경변수 |
 | `nestjs-pino` (JSON 로그, 요청마다 `reqId`/`jobId`) | Logback JSON + MDC |
 | `@nestjs/terminus` `/health` | Actuator `/actuator/health` |
 | `@nestjs/swagger` `/docs` | springdoc-openapi |

@@ -1,35 +1,29 @@
-import { Inject, Injectable } from '@nestjs/common';
-import type { ConfigType } from '@nestjs/config';
+import { Injectable } from '@nestjs/common';
 import { copyFile, mkdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { AppException } from '../common/exceptions/app.exception.js';
 import { ErrorCode } from '../common/exceptions/error-code.js';
 import { downloadToFile } from '../common/utils/download.util.js';
-import configuration from '../config/configuration.js';
 import type { CompositionFile, InputKind, RenderInputs } from '../hyperframes/composition.builder.js';
 
-const DEFAULT_EXT: Record<InputKind, string> = { slide: '.png', audio: '.mp3' };
+/** 요청별 작업 폴더의 루트 (파드 로컬 디스크) */
+const WORK_DIR = process.env.WORK_DIR || './work';
+const DOWNLOAD_TIMEOUT_MS = Number(process.env.DOWNLOAD_TIMEOUT_MS) || 60_000;
+const MAX_DOWNLOAD_BYTES = (Number(process.env.MAX_DOWNLOAD_MB) || 200) * 1024 * 1024;
 
-export interface DownloadLimits {
-  downloadTimeoutMs: number;
-  maxDownloadBytes: number;
-}
+const DEFAULT_EXT: Record<InputKind, string> = { slide: '.png', audio: '.mp3' };
 
 /** 요청별 작업 폴더를 만든다. 파일시스템 일은 전부 Workspace 가 맡는다. */
 @Injectable()
 export class RenderWorkspaceService {
-  constructor(
-    @Inject(configuration.KEY) private readonly config: ConfigType<typeof configuration>,
-    @InjectPinoLogger(RenderWorkspaceService.name) private readonly logger: PinoLogger,
-  ) {}
+  constructor(@InjectPinoLogger(RenderWorkspaceService.name) private readonly logger: PinoLogger) {}
 
   /** @param outputPath 요청의 outputPath. 렌더 결과 파일명은 여기서 온다 */
   async create(jobId: string, outputPath: string): Promise<Workspace> {
-    const { workDir, downloadTimeoutMs, maxDownloadBytes } = this.config.render;
-    const dir = path.resolve(workDir, jobId);
+    const dir = path.resolve(WORK_DIR, jobId);
     await mkdir(path.join(dir, 'input'), { recursive: true });
-    return new Workspace(dir, jobId, outputPath, { downloadTimeoutMs, maxDownloadBytes }, this.logger);
+    return new Workspace(dir, jobId, outputPath, this.logger);
   }
 }
 
@@ -49,7 +43,6 @@ export class Workspace {
     readonly dir: string,
     readonly jobId: string,
     readonly outputPath: string,
-    private readonly limits: DownloadLimits,
     private readonly logger: PinoLogger,
   ) {
     this.inputDir = path.join(dir, 'input');
@@ -71,7 +64,7 @@ export class Workspace {
     const dest = path.join(this.inputDir, `${kind}${extOf(src) || DEFAULT_EXT[kind]}`);
     try {
       if (/^https?:\/\//i.test(src)) {
-        await downloadToFile(src, dest, { timeoutMs: this.limits.downloadTimeoutMs, maxBytes: this.limits.maxDownloadBytes });
+        await downloadToFile(src, dest, { timeoutMs: DOWNLOAD_TIMEOUT_MS, maxBytes: MAX_DOWNLOAD_BYTES });
       } else {
         if (!path.isAbsolute(src) || !(await stat(src)).isFile()) {
           throw new Error('not an absolute path to an existing file');

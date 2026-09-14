@@ -1,12 +1,13 @@
+import 'dotenv/config'; // .env 를 process.env 로 (없으면 그냥 넘어간다). 다른 import 보다 먼저여야 한다
 import 'reflect-metadata';
 import { ValidationPipe } from '@nestjs/common';
-import type { ConfigType } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { Server } from 'node:http';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
-import configuration from './config/configuration.js';
+
+const PORT = Number(process.env.PORT) || 8080;
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -27,12 +28,12 @@ async function bootstrap() {
   server.requestTimeout = 0;
   server.headersTimeout = 60_000;
 
-  // SIGTERM: 새 연결을 받지 않고 진행 중 요청이 끝난 뒤 종료 (쿠버네티스 terminationGracePeriodSeconds 안에서)
+  // SIGTERM: 새 연결을 받지 않고 진행 중 요청이 끝난 뒤 종료.
+  // 단, 렌더 도중 SIGTERM 이 오면 puppeteer 가 Chrome 을 닫아 그 요청은 실패한다 (DESIGN.md §9, k8s preStop 으로 대응)
   app.enableShutdownHooks();
 
-  const { port } = app.get<ConfigType<typeof configuration>>(configuration.KEY).app;
-  await app.listen(port);
-  app.get(Logger).log(`listening on :${port}  (Swagger: /docs, health: /health)`, 'bootstrap');
+  await app.listen(PORT);
+  app.get(Logger).log(`listening on :${PORT}  (Swagger: /docs, health: /health)`, 'bootstrap');
 }
 
 bootstrap();
