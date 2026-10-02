@@ -39,8 +39,8 @@ curl -s -X POST http://localhost:8080/render -H 'Content-Type: application/json'
     { "id": "title",
       "left": 838200, "top": 365125, "width": 10515600, "height": 1325563,   // EMU (python-pptx shape.left/top/width/height 그대로)
       "start": 0.5, "end": 3.0,                        // 초
-      "effect": "box",                                 // box | zoom | shake | zoom-box
-      "color": "#FF3B30" }                             // 선택. box / zoom-box 테두리 색
+      "effect": "box",                                 // box | zoom | shake | zoom-box | marker
+      "color": "#FF3B30" }                             // 선택. box / zoom-box 테두리 색, marker 형광펜 색
   ]
 }
 ```
@@ -51,6 +51,7 @@ curl -s -X POST http://localhost:8080/render -H 'Content-Type: application/json'
 | `zoom` | 객체 영역을 오려낸 조각이 제자리에서 1.18배까지 서서히 커졌다가 되돌아온다 |
 | `shake` | 오려낸 조각이 살짝 떠서 좌우로 짧게 흔들리고 쉬기를 반복한다 |
 | `zoom-box` | zoom + 조각에 테두리 |
+| `marker` | 객체 위에 형광펜을 긋는다. 가장자리가 울퉁불퉁하고 살짝 기울며, 넓고 높은 상자(여러 줄 텍스트)는 줄마다 방향을 바꿔 지그재그로 긋는다. 색은 `color`(기본 노랑) |
 
 **로컬과 운영을 구분하는 스위치는 없다.** 값의 형태가 처리 방식을 정한다. `slideImage`/`audio` 가 `http(s)://` 로 시작하면 다운로드하고, 아니면 서버가 읽을 수 있는 절대경로로 본다. `outputPath` 는 항상 서버가 쓸 수 있는 절대경로다. 로컬은 내 디스크 경로, 운영은 NAS URL(입력)과 파드에 마운트된 NAS 경로(출력)가 된다. 요청 필드와 내부 입력 이름의 대응은 `render.service.ts` 의 `fetchInputs({ slide: dto.slideImage, audio: dto.audio })` 한 줄에만 있다.
 
@@ -123,7 +124,7 @@ cp .env.example .env    # 로컬. 필요한 값만 고친다
 
 쿠버네티스가 넘길 것: `NODE_ENV=production`, `PORT`, `LOG_LEVEL`, `RENDER_WORKERS`(파드 CPU 수에 맞춤, 권장 2). 나머지는 기본값.
 
-코드 상수로 남긴 것: 강조 테두리 기본색·두께([composition.builder.ts](src/hyperframes/composition.builder.ts)), 애니메이션 배율·진폭·리듬([effects/](src/hyperframes/effects) 각 파일 상단).
+코드 상수로 남긴 것: 강조 테두리 기본색·두께·형광펜 기본색([composition.builder.ts](src/hyperframes/composition.builder.ts)), 애니메이션 배율·진폭·리듬([effects/](src/hyperframes/effects) 각 파일 상단).
 
 ## 구조
 
@@ -148,7 +149,7 @@ src/
    ├─ hyperframes.service.ts      # @hyperframes/producer 호출 + 경고 검사
    ├─ composition.builder.ts      # 프로젝트 폴더 구성 결정: index.html, 데이터 스크립트, 자산 이름
    ├─ template.html               # 컴포지션 마크업
-   └─ effects/                    # 브라우저에서 도는 GSAP 효과. common.js(공통) · box.js · zoom.js · shake.js · index.js(진입)
+   └─ effects/                    # 브라우저에서 도는 GSAP 효과. common.js(공통) · box.js · zoom.js · shake.js · marker.js · index.js(진입)
 ```
 
 요청 1건의 흐름 (`render.service.ts`):
@@ -157,7 +158,7 @@ src/
 ### 새 효과 추가하기
 
 1. [render-request.dto.ts](src/render/dto/render-request.dto.ts) 의 `EFFECTS` 에 이름 추가
-2. [composition.builder.ts](src/hyperframes/composition.builder.ts) 의 `ELEMENT_KIND` 에 요소 종류 추가 (`box` = 테두리 div, `cut` = 객체 영역을 오려낸 조각 div)
+2. [composition.builder.ts](src/hyperframes/composition.builder.ts) 의 `ELEMENT_KIND` 에 요소 종류 추가 (`box` = 테두리 div, `cut` = 객체 영역을 오려낸 조각 div, `marker` = 빈 컨테이너 div. 획은 효과 파일이 그린다)
 3. `src/hyperframes/effects/<이름>.js` 에 `window.HL.effects.<이름> = function (tl, o, ctx) { ... }` — GSAP tween 을 `tl` 에 추가한다. 시그니처와 규칙은 [common.js](src/hyperframes/effects/common.js) 머리말 참고
 
 빌더가 폴더를 읽어 script 태그와 복사 목록을 만들므로 template.html 은 손대지 않는다. 새 CSS 가 필요하면 template.html 의 `<style>` 에 추가한다.

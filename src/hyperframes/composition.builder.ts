@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export type Effect = 'box' | 'zoom' | 'shake' | 'zoom-box';
+export type Effect = 'box' | 'zoom' | 'shake' | 'zoom-box' | 'marker';
 
 /** px 로 변환된 객체. effects/index.js 가 window.__SLIDE__.objects 로 받는 형태 */
 export interface PxObject {
@@ -18,7 +18,7 @@ export interface PxObject {
   start: number;
   end: number;
   effect: Effect;
-  /** 테두리 색. 없으면 DEFAULT_HIGHLIGHT_COLOR */
+  /** 테두리·형광펜 색. 없으면 효과별 기본색 (DEFAULT_HIGHLIGHT_COLOR / DEFAULT_MARKER_COLOR) */
   color?: string;
 }
 
@@ -50,17 +50,22 @@ export interface CompositionFile {
 /** 강조 테두리 기본색과 두께. 요청의 color 가 없을 때 쓴다 (설정이 아니라 디자인 값) */
 export const DEFAULT_HIGHLIGHT_COLOR = '#FF3B30';
 export const BORDER_PX = 6;
+/** 형광펜(marker) 기본색. 요청의 color 가 없을 때 쓴다 */
+export const DEFAULT_MARKER_COLOR = '#FFE23A';
 
 /**
  * 효과별로 어떤 요소를 만들지. 새 효과를 추가할 때 여기에 한 줄, effects/<이름>.js 에 함수 하나, DTO 의 EFFECTS 에 이름 하나.
  * - box: 객체 위치에 테두리 div (.hl)
  * - cut: 슬라이드 이미지를 배경으로 깔고 객체 영역만 보이게 자른 조각 div (.cut). 조각만 transform 되므로 배경은 그대로
+ * - marker: 객체 위치에 빈 컨테이너 div (.marker). 형광펜 획(SVG)은 effects/marker.js 가 브라우저에서 그려 넣는다.
+ *   마크업에 SVG 를 직접 쓰지 않으므로 컴파일러가 손댈 것이 없고, 획 모양 상수가 효과 파일 한 곳에 모인다
  */
-const ELEMENT_KIND: Record<Effect, 'box' | 'cut'> = {
+const ELEMENT_KIND: Record<Effect, 'box' | 'cut' | 'marker'> = {
   box: 'box',
   zoom: 'cut',
   shake: 'cut',
   'zoom-box': 'cut',
+  marker: 'marker',
 };
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -130,6 +135,10 @@ function objectDiv(o: PxObject, slideSrc: string): string {
   const rect = `left:${o.left}px;top:${o.top}px;width:${o.width}px;height:${o.height}px`;
   if (ELEMENT_KIND[o.effect] === 'box') {
     return `      <div id="${o.domId}" class="clip hl" ${timing} style="${rect};border-color:${color}"></div>`;
+  }
+  if (ELEMENT_KIND[o.effect] === 'marker') {
+    // 색만 CSS 변수로 넘긴다. 획은 effects/marker.js 가 그린다
+    return `      <div id="${o.domId}" class="clip marker" ${timing} style="${rect};--marker:${o.color ?? DEFAULT_MARKER_COLOR}"></div>`;
   }
   // background-position 을 -left,-top 으로 두면 배경(슬라이드 전체 크기)에서 정확히 그 영역이 보인다
   const cls = o.effect === 'zoom-box' ? 'clip cut ring' : 'clip cut';

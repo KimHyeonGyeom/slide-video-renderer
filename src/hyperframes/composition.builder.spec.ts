@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CompositionBuilder, DEFAULT_HIGHLIGHT_COLOR, type PxObject } from './composition.builder.js';
+import { CompositionBuilder, DEFAULT_HIGHLIGHT_COLOR, DEFAULT_MARKER_COLOR, type PxObject } from './composition.builder.js';
 
 const base = {
   inputs: { slide: '/tmp/in/slide.jpg', audio: '/tmp/in/audio.mp3' },
@@ -31,7 +31,12 @@ describe('CompositionBuilder', () => {
     expect(effects[0]).toBe('assets/effects/common.js');
     expect(effects[effects.length - 1]).toBe('assets/effects/index.js');
     expect(effects).toEqual(
-      expect.arrayContaining(['assets/effects/box.js', 'assets/effects/zoom.js', 'assets/effects/shake.js']),
+      expect.arrayContaining([
+        'assets/effects/box.js',
+        'assets/effects/zoom.js',
+        'assets/effects/shake.js',
+        'assets/effects/marker.js',
+      ]),
     );
     const html = files[0].content!;
     expect(html.indexOf('effects/common.js')).toBeLessThan(html.indexOf('effects/box.js'));
@@ -56,6 +61,18 @@ describe('CompositionBuilder', () => {
     expect(html).toContain(`id="hl-1" class="clip cut ring"`);
     expect(html).toContain('background-position:-132px -58px');
     expect(html).toContain('--ring:#00FF00');
+  });
+
+  it('marker 는 빈 컨테이너 div 에 형광펜 색만 넘긴다 (획은 effects/marker.js 가 그린다)', async () => {
+    const marker: PxObject = { ...box, id: 'c', domId: 'hl-2', effect: 'marker' };
+    const colored: PxObject = { ...marker, id: 'd', domId: 'hl-3', color: '#FF8BB5' };
+    const files = await new CompositionBuilder().build({ ...base, objects: [marker, colored] });
+    const html = files[0].content!;
+    expect(html).toContain(`id="hl-2" class="clip marker"`);
+    expect(html).toContain(`--marker:${DEFAULT_MARKER_COLOR}`);
+    expect(html).toContain(`id="hl-3" class="clip marker"`);
+    expect(html).toContain('--marker:#FF8BB5');
+    expect(html).not.toContain('<svg');
   });
 
   it('데이터 스크립트는 인라인이 아닌 외부 파일이다 (컴파일러가 인라인을 body 끝으로 옮김)', async () => {

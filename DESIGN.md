@@ -45,6 +45,11 @@ v3.5 → v3.6 (2026-09-14)
 - 설정 레이어 제거: `config/configuration.ts` 와 `@nestjs/config` 를 빼고 각 파일이 `process.env` 를 직접 읽는다. `.env` 는 `dotenv/config` 가 로드 (§10)
 - SIGTERM 실제 동작 정정: 렌더 중이면 그 요청이 500. k8s `preStop` 으로 큐를 비우는 것이 대책 (§9, §12)
 
+v3.6 → v3.7 (2026-10-02 marker 효과)
+
+- **`marker` 효과 추가.** 형광펜: 상자 위에 굵은 SVG 획을 왼쪽에서 오른쪽으로 긋는다. 가장자리는 노이즈 변위로 울퉁불퉁, `multiply` 라 글자가 가려지지 않는다. 넓고 높은 상자는 여러 줄 텍스트로 보고 줄마다 지그재그로 (§4, §6)
+- 요소 종류 셋째 `marker`: 빌더는 빈 컨테이너 div 만 만들고 획은 `effects/marker.js` 가 브라우저에서 그린다. 모양 난수는 domId 로 시드를 고정해 캡처 워커가 여러 개여도 같은 프레임 (§6)
+
 ## 1. 한 줄 요약
 
 `POST /render` 로 **슬라이드 이미지 + 음성(mp3) + 객체 목록(EMU 좌표, start/end, effect)** 을 받아
@@ -101,8 +106,8 @@ Swagger UI: `GET /docs` (`@nestjs/swagger` CLI 플러그인으로 DTO 에서 자
     { "id": "title",                                   // 선택. 없으면 "obj-<index>"
       "left": 838200, "top": 365125, "width": 10515600, "height": 1325563,   // EMU
       "start": 0.5, "end": 3.0,                        // 초
-      "effect": "box",                                 // box | zoom | shake | zoom-box
-      "color": "#FF3B30" }                             // 선택. box/zoom-box 테두리 색
+      "effect": "box",                                 // box | zoom | shake | zoom-box | marker
+      "color": "#FF3B30" }                             // 선택. box/zoom-box 테두리 색, marker 형광펜 색
   ]
 }
 ```
@@ -110,7 +115,7 @@ Swagger UI: `GET /docs` (`@nestjs/swagger` CLI 플러그인으로 DTO 에서 자
 검증 — DTO(class-validator, 필드 단위):
 
 - `left, top >= 0`, `width, height >= 1` 정수. `start >= 0`, `end > 0`. `objects` 1개 이상
-- `effect` ∈ {box, zoom, shake, zoom-box}. `color` 는 `#RRGGBB`
+- `effect` ∈ {box, zoom, shake, zoom-box, marker}. `color` 는 `#RRGGBB`
 - `outputPath` 는 절대경로이고 `.mp4` 로 끝남
 
 검증 — 서비스(필드 간 규칙, Spring 에서 서비스 계층에 두는 것과 같음):
@@ -160,11 +165,14 @@ Swagger UI: `GET /docs` (`@nestjs/swagger` CLI 플러그인으로 DTO 에서 자
   <div id="hl-1" class="clip cut ring" data-start="3.5" data-duration="3"
        style="left:240px;top:360px;width:720px;height:480px;
               background-image:url('./assets/slide.png');background-position:-240px -360px;--ring:#FF3B30"></div>
+  <!-- marker: 빈 컨테이너 div. 형광펜 획(SVG)은 effects/marker.js 가 로드 시점에 그려 넣는다. 색은 --marker -->
+  <div id="hl-2" class="clip marker" data-start="4" data-duration="3.5"
+       style="left:132px;top:890px;width:1656px;height:186px;--marker:#FFE23A"></div>
 
   <audio src="./assets/audio.mp3" data-start="0" data-duration="{{DURATION}}" data-volume="1"></audio>
   <script src="./assets/slide-data.js"></script>   <!-- window.__SLIDE__ = {...}. 외부 파일이어야 한다 (아래) -->
   <script src="./assets/gsap.min.js"></script>
-  <script src="./assets/effects/common.js"></script>  <!-- 공통 헬퍼 → box.js, shake.js, zoom.js → index.js 순서. 빌더가 채운다 -->
+  <script src="./assets/effects/common.js"></script>  <!-- 공통 헬퍼 → box.js, marker.js, shake.js, zoom.js → index.js 순서. 빌더가 채운다 -->
   <script src="./assets/effects/index.js"></script>   <!-- 타임라인 생성 + window.__timelines.slide 등록 -->
 </div>
 ```
@@ -179,10 +187,11 @@ Swagger UI: `GET /docs` (`@nestjs/swagger` CLI 플러그인으로 DTO 에서 자
 | `zoom` | 조각이 제자리에서 **1.18배까지 서서히 커진다** (구간의 절반, 0.4~1.5s). 끝 0.5s 에 원래 크기로 되돌아오며 그 동안 0.4s 에 걸쳐 사라진다. 커진 뒤 화면 밖으로 나가면 배율을 줄이고 안쪽으로 밀어 넣는다 |
 | `shake` | 조각이 1.05배로 살짝 뜬 뒤 **좌우 ±8px + 기울임 ±1.2° 로 0.6s 흔들고 0.5s 쉬기**를 구간 끝까지 반복 |
 | `zoom-box` | zoom + 조각에 테두리 링 (`box-shadow` 라 크기에 영향 없음, 색은 `--ring`) |
+| `marker` | 상자 위에 **형광펜 획을 왼쪽에서 오른쪽으로 긋는다** (한 획 0.5s, 여러 획은 0.42s + 0.26s×획 수, 구간의 45% 이내). 넓고 높은 상자(높이 ≥ 줄 높이 62px × 1.5, 너비/높이 ≥ 2.4)는 여러 줄 텍스트로 보고 줄마다 방향을 바꿔 지그재그로. 끝 0.3s 페이드. 가장자리는 노이즈 변위, 알파에 가로 노이즈를 곱한 마른 자국, `multiply` 라 글자가 가려지지 않는다. 모양 난수는 domId 로 시드 고정 |
 
 조각(.cut)에는 떠 있는 느낌의 그림자(`0 10px 30px rgba(0,0,0,.35)`)가 있다. 객체끼리 시간이 겹쳐도 된다 (효과가 객체별로 독립). 튜닝 상수(페이드, 배율, 진폭, 리듬)는 각 효과 파일 상단에 있다.
 
-**새 효과 추가**: ① DTO `EFFECTS` 에 이름 ② `composition.builder.ts` `ELEMENT_KIND` 에 요소 종류(box | cut) ③ `effects/<이름>.js` 에 `window.HL.effects.<이름> = function (tl, o, ctx) {...}`. 빌더가 폴더를 읽어 script 태그와 복사 목록을 만들므로 다른 곳은 손대지 않는다.
+**새 효과 추가**: ① DTO `EFFECTS` 에 이름 ② `composition.builder.ts` `ELEMENT_KIND` 에 요소 종류(box | cut | marker) ③ `effects/<이름>.js` 에 `window.HL.effects.<이름> = function (tl, o, ctx) {...}`. 빌더가 폴더를 읽어 script 태그와 복사 목록을 만들므로 다른 곳은 손대지 않는다.
 
 HyperFrames 규칙: `paused:true` 타임라인 하나를 `window.__timelines.slide` 에 동기 등록, `play()/currentTime` 직접 호출 금지, wall-clock/`setTimeout`/무한 반복 금지.
 
@@ -191,6 +200,7 @@ HyperFrames 규칙: `paused:true` 타임라인 하나를 `window.__timelines.sli
 - **컴파일러가 body 의 인라인 `<script>` 를 전부 떼어 body 끝에 다시 붙인다.** 외부 `<script src>` 는 순서가 유지된다. 그래서 데이터를 인라인으로 넣으면 효과 스크립트보다 늦게 실행돼 효과가 전부 빠진 영상이 나온다. 데이터는 `assets/slide-data.js` 외부 파일로 쓴다.
 - 타임라인이 등록되지 않으면 엔진은 워커마다 45초(`PRODUCER_PLAYER_READY_TIMEOUT_MS`)를 기다린 뒤 **경고만 남기고 애니메이션 없이 성공으로 렌더**한다. `effects/index.js` 는 `window.__SLIDE__` 가 없으면 `console.error` 를 남기고, 서비스는 `job.warnings` 를 검사해 실패 처리한다(§7).
 - `.cut` 의 background-image 조각 방식은 컴파일러·캡처에 문제 없다. 4종 효과 모두 프레임에서 확인됨.
+- `marker` 는 SVG 를 마크업에 넣지 않고 효과 스크립트가 DOM API 로 그려 넣는다 (컴파일러가 SVG 태그·camelCase 속성을 어떻게 다루는지에 기대지 않기 위해). 워커 2개 렌더에서 지그재그 세 획·거친 가장자리·마른 자국 프레임 확인 (2026-10-02). `multiply` 는 어두운 슬라이드에서 거의 보이지 않으므로(글자만 노랗게 물든다) 다크 테마 슬라이드는 아직 지원 범위 밖.
 
 ## 7. `src/` 구조 (NestJS)
 
@@ -218,7 +228,7 @@ src/
    ├─ hyperframes.service.ts      # @hyperframes/producer 호출, 경고 검사, producer 로그를 pino 로 브리지
    ├─ composition.builder.ts      # 프로젝트 폴더 구성을 결정: index.html, slide-data.js, 자산 이름(원본 확장자 유지)
    ├─ template.html               # nest-cli.json assets 로 dist 에 복사
-   └─ effects/                    # common.js(공통) · box.js · zoom.js(zoom, zoom-box) · shake.js · index.js(진입)
+   └─ effects/                    # common.js(공통) · box.js · zoom.js(zoom, zoom-box) · shake.js · marker.js · index.js(진입)
 test/app.e2e-spec.ts              # supertest: /health, 400 두 종류. 실제 렌더는 scripts/api-test.sh
 ```
 
@@ -303,7 +313,7 @@ Service 는 어느 파드가 바쁜지 모르고 무작위로 뿌리므로 파�
 
 쿠버네티스가 넘기는 것: `NODE_ENV=production`, `PORT`, `LOG_LEVEL`, `RENDER_WORKERS`. 나머지는 기본값.
 
-코드 상수(설정이 아닌 디자인 값): 강조 테두리 기본색 `#FF3B30`·두께 6px (`composition.builder.ts`), 애니메이션 배율·진폭·리듬 (`effects/*.js` 상단, 브라우저 코드라 env 가 닿지 않음).
+코드 상수(설정이 아닌 디자인 값): 강조 테두리 기본색 `#FF3B30`·두께 6px·형광펜 기본색 `#FFE23A` (`composition.builder.ts`), 애니메이션 배율·진폭·리듬·형광펜 획 모양 (`effects/*.js` 상단, 브라우저 코드라 env 가 닿지 않음).
 
 ## 11. 로컬 실행과 이미지
 
@@ -381,7 +391,7 @@ Dockerfile 은 Debian 저장소를 HTTPS 로 바꿔 쓴다. 일부 네트워크(
 
 **(1) 합성 픽스처 — `npm run fixture`** → `fixtures/sample/`
 
-- `objects.json`: EMU 좌표 3개(제목/본문/도형) + start/end/effect/color
+- `objects.json`: EMU 좌표 4개(제목/차트/도형 + 형광펜 본문) + start/end/effect/color
 - `slide.png`: sharp 로 1920×1080 SVG 렌더. 회색 배경 위에 **objects.json 과 같은 EMU 를 px 로 바꾼 위치에 색 박스** → 렌더 결과에서 강조 테두리가 색 박스에 정확히 겹치면 변환이 맞는 것
 - `audio.mp3`: macOS `say -v Yuna "…" -o` + ffmpeg 변환(한국어 TTS, 8초 내외). `say` 없으면 ffmpeg `anullsrc` 무음 8초
 - `request.json`: 위 파일의 절대경로 + `outputPath`(`fixtures/sample/out.mp4` 절대경로)가 들어간 완성된 POST 본문. 머신별 경로라 `fixtures/sample/` 은 gitignore. `smoke`·`api-test.sh` 는 없으면 자동 생성

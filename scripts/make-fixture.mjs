@@ -29,16 +29,25 @@ const objects = [
   },
   { id: 'chart', left: 1524000, top: 2286000, width: 4572000, height: 3048000, start: 3.5, end: 6.5, effect: 'zoom-box' },
   { id: 'shape', left: 7620000, top: 2743200, width: 3048000, height: 1524000, start: 6.8, end: 9.5, effect: 'shake' },
+  // 넓고 높은 상자(1656×186px = 줄 높이 62px 세 줄) → marker 가 줄마다 지그재그로 세 획을 긋는다
+  { id: 'text', left: 838200, top: 5651500, width: 10515600, height: 1181100, start: 4.0, end: 7.5, effect: 'marker' },
 ];
-const fills = { title: '#3b82f6', chart: '#10b981', shape: '#f59e0b' };
+const fills = { title: '#3b82f6', chart: '#10b981', shape: '#f59e0b', text: '#f8fafc' };
 
 // slide.png — 회색 배경 + 객체 위치에 색 박스
 const rects = objects
   .map((o) => {
     const [x, y, w, h] = [px(o.left), px(o.top), px(o.width), px(o.height)];
+    const marker = o.effect === 'marker';
+    // marker 상자는 밝은 바탕에 어두운 라벨 + 둘째·셋째 줄 자리에 가짜 글줄 → 획이 줄마다 하나씩 겹쳐야 한다
+    const lines = marker
+      ? [1, 2]
+          .map((k) => `<rect x="${x + 16}" y="${y + 21 + 62 * k}" width="${w * 0.55}" height="20" rx="4" fill="#64748b"/>`)
+          .join('')
+      : '';
     return (
-      `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${fills[o.id]}"/>` +
-      `<text x="${x + 16}" y="${y + 44}" font-size="36" font-family="sans-serif" fill="#fff">${o.id} (${x},${y} ${w}x${h})</text>`
+      `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${fills[o.id]}"/>${lines}` +
+      `<text x="${x + 16}" y="${y + 44}" font-size="36" font-family="sans-serif" fill="${marker ? '#334155' : '#fff'}">${o.id} (${x},${y} ${w}x${h})</text>`
     );
   })
   .join('');
@@ -51,7 +60,7 @@ await sharp(Buffer.from(svg)).png().toFile(path.join(outDir, 'slide.png'));
 const mp3 = path.join(outDir, 'audio.mp3');
 const aiff = path.join(outDir, 'audio.aiff');
 const text =
-  '이 슬라이드는 강조 효과 테스트입니다. 먼저 제목에 테두리가 표시되고, 다음으로 차트 영역이 확대되며, 마지막으로 오른쪽 도형이 깜빡입니다.';
+  '이 슬라이드는 강조 효과 테스트입니다. 먼저 제목에 테두리가 표시되고, 다음으로 차트 영역이 확대되며, 아래 본문에 형광펜이 그어지고, 마지막으로 오른쪽 도형이 흔들립니다.';
 try {
   await run('say', ['-v', 'Yuna', '-o', aiff, text]);
   await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', aiff, mp3]);
