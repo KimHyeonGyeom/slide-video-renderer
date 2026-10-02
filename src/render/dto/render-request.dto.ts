@@ -21,7 +21,7 @@ import {
  * zoom     객체 영역을 오려낸 조각이 제자리에서 서서히 커졌다가 되돌아온다
  * shake    오려낸 조각이 살짝 떠서 좌우로 짧게 흔들린다
  * zoom-box zoom + 조각에 테두리
- * marker   객체 위에 형광펜을 긋는다. 넓고 높은 상자(여러 줄 텍스트)는 줄마다 지그재그로
+ * marker   객체 위에 형광펜을 긋는다. 넓고 높은 상자(여러 줄 텍스트)는 줄마다 왼쪽에서 오른쪽으로
  */
 export const EFFECTS = ['box', 'zoom', 'shake', 'zoom-box', 'marker'] as const;
 export type Effect = (typeof EFFECTS)[number];

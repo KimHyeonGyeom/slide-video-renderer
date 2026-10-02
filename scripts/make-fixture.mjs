@@ -29,7 +29,7 @@ const objects = [
   },
   { id: 'chart', left: 1524000, top: 2286000, width: 4572000, height: 3048000, start: 3.5, end: 6.5, effect: 'zoom-box' },
   { id: 'shape', left: 7620000, top: 2743200, width: 3048000, height: 1524000, start: 6.8, end: 9.5, effect: 'shake' },
-  // 넓고 높은 상자(1656×186px = 줄 높이 62px 세 줄) → marker 가 줄마다 지그재그로 세 획을 긋는다
+  // 넓고 높은 상자(1656×186px = 줄 높이 62px 세 줄) → marker 가 줄마다 세 획을 왼쪽에서 오른쪽으로 긋는다
   { id: 'text', left: 838200, top: 5651500, width: 10515600, height: 1181100, start: 4.0, end: 7.5, effect: 'marker' },
 ];
 const fills = { title: '#3b82f6', chart: '#10b981', shape: '#f59e0b', text: '#f8fafc' };

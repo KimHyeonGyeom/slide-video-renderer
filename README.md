@@ -51,7 +51,7 @@ curl -s -X POST http://localhost:8080/render -H 'Content-Type: application/json'
 | `zoom` | 객체 영역을 오려낸 조각이 제자리에서 1.18배까지 서서히 커졌다가 되돌아온다 |
 | `shake` | 오려낸 조각이 살짝 떠서 좌우로 짧게 흔들리고 쉬기를 반복한다 |
 | `zoom-box` | zoom + 조각에 테두리 |
-| `marker` | 객체 위에 형광펜을 긋는다. 가장자리가 울퉁불퉁하고 살짝 기울며, 넓고 높은 상자(여러 줄 텍스트)는 줄마다 방향을 바꿔 지그재그로 긋는다. 색은 `color`(기본 노랑) |
+| `marker` | 객체 위에 형광펜을 긋는다. 가장자리가 울퉁불퉁하고 살짝 기울며, 넓고 높은 상자(여러 줄 텍스트)는 줄마다 왼쪽에서 오른쪽으로 긋는다. 색은 `color`(기본 노랑) |
 
 **로컬과 운영을 구분하는 스위치는 없다.** 값의 형태가 처리 방식을 정한다. `slideImage`/`audio` 가 `http(s)://` 로 시작하면 다운로드하고, 아니면 서버가 읽을 수 있는 절대경로로 본다. `outputPath` 는 항상 서버가 쓸 수 있는 절대경로다. 로컬은 내 디스크 경로, 운영은 NAS URL(입력)과 파드에 마운트된 NAS 경로(출력)가 된다. 요청 필드와 내부 입력 이름의 대응은 `render.service.ts` 의 `fetchInputs({ slide: dto.slideImage, audio: dto.audio })` 한 줄에만 있다.
 

@@ -1,6 +1,6 @@
 // marker: 객체 상자 위에 형광펜을 긋는다. 요소는 composition.builder 가 만든 빈 컨테이너(.marker)이고 획(SVG)은 여기서 그려 넣는다.
 // - 획 중심선은 살짝 기울고 구불구불한 곡선. 가장자리는 노이즈 변위 필터로 울퉁불퉁하게, 알파에 가로로 긴 노이즈를 곱해 마른 자국
-// - 넓고 높은 상자는 여러 줄 텍스트로 보고 줄마다 획을 나눠 방향을 바꿔가며(지그재그) 긋는다. 서버는 글자 위치를 모르고 상자만 안다
+// - 넓고 높은 상자는 여러 줄 텍스트로 보고 줄마다 획을 나눠 긋는다. 모든 획은 왼쪽에서 오른쪽으로. 서버는 글자 위치를 모르고 상자만 안다
 // - 모양을 정하는 난수는 domId 로 시드를 고정한다. 캡처 워커가 여러 개라서 페이지를 따로 로드해도 같은 프레임이 나와야 한다
 // - 등장: 왼쪽에서 오른쪽으로 그어진다 (stroke-dashoffset). 퇴장: box 처럼 페이드. 색은 컨테이너의 --marker (빌더가 기본색을 넣는다)
 (function () {
@@ -94,7 +94,7 @@
   /**
    * 상자 → 획 목록. DOM 을 쓰지 않는 순수 함수라 marker.spec.ts 가 검증한다.
    * o: { domId, left, top, width, height } (px). 반환: [{ d, length, width, yc }] — d 는 스테이지 좌표의 path, length 는 그 길이, width 는 굵기, yc 는 중심 y.
-   * 긋는 방향은 d 의 시작점에 담긴다 (짝수 번째 줄 왼→오, 홀수 번째 줄 오→왼).
+   * 모든 획은 왼쪽에서 오른쪽으로 긋는다 (d 의 시작점이 왼쪽 끝).
    */
   HL.markerStrokes = function (o) {
     var rnd = rng(seedOf(o.domId));
@@ -118,7 +118,6 @@
         var end = j === 0 || j === k;
         pts.push([x0 + len * t, yc + tilt * (t - 0.5) + (rnd() - 0.5) * (end ? amp * 0.6 : amp * 2)]);
       }
-      if (i % 2 === 1) pts.reverse(); // 지그재그
       var c = curve(pts);
       strokes.push({ d: c.d, length: c.length, width: w, yc: yc });
     }

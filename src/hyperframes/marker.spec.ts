@@ -47,12 +47,12 @@ describe('marker 획 나누기 (HL.markerStrokes)', () => {
     expect(s[0].length).toBeLessThan(650 * 1.25);
   });
 
-  it('여러 줄 텍스트(넓고 높은 상자)는 줄 높이 추정값으로 나눠 지그재그로 긋는다', () => {
+  it('여러 줄 텍스트(넓고 높은 상자)는 줄 높이 추정값으로 나눠 줄마다 왼쪽에서 오른쪽으로 긋는다', () => {
     const s = markerStrokes({ domId: 'hl-1', left: 120, top: 312, width: 780, height: 186 });
     expect(s).toHaveLength(3);
-    // 왼→오, 오→왼, 왼→오
+    // 세 획 모두 왼쪽 끝에서 시작 (단방향)
     expect(startX(s[0])).toBeLessThan(120);
-    expect(startX(s[1])).toBeGreaterThan(900);
+    expect(startX(s[1])).toBeLessThan(120);
     expect(startX(s[2])).toBeLessThan(120);
     // 획 중심은 각 줄 가운데 근처, 굵기는 줄 높이보다 조금 커서 이웃과 겹친다
     expect(s[0].yc).toBeCloseTo(343, -1);
