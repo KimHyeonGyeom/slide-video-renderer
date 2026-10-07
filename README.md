@@ -1,6 +1,6 @@
 # slide-video-renderer
 
-PPT 슬라이드 이미지 + 음성(mp3) + 슬라이드 객체 좌표(EMU) 를 받아, **음성 길이만큼의 mp4** 에 객체 강조 효과(테두리 / 확대 / 흔들기)를 넣어 렌더하는 HTTP 서비스.
+PPT 슬라이드 이미지 + 음성(mp3) + 슬라이드 객체 좌표(EMU) 를 받아, **음성 길이만큼의 mp4** 에 객체 강조 효과(테두리 / 확대 / 흔들기 / 형광펜 / 동그라미 / 밑줄 / 글로우 / 스포트라이트)를 넣어 렌더하는 HTTP 서비스.
 렌더 엔진은 [HyperFrames](https://github.com/heygen-com/hyperframes)(HTML → 영상), 서버는 NestJS.
 
 설계와 결정 근거는 [DESIGN.md](DESIGN.md) 에 있다. 이 문서는 **실행·구조·운영**만 다룬다.
@@ -39,8 +39,8 @@ curl -s -X POST http://localhost:8080/render -H 'Content-Type: application/json'
     { "id": "title",
       "left": 838200, "top": 365125, "width": 10515600, "height": 1325563,   // EMU (python-pptx shape.left/top/width/height 그대로)
       "start": 0.5, "end": 3.0,                        // 초
-      "effect": "box",                                 // box | zoom | shake | zoom-box | marker
-      "color": "#FF3B30" }                             // 선택. box / zoom-box 테두리 색, marker 형광펜 색
+      "effect": "box",                                 // box | zoom | shake | zoom-box | marker | circle | underline | glow | spotlight
+      "color": "#FF3B30" }                             // 선택. box/zoom-box 테두리, marker 형광펜, circle/underline 펜, glow 빛 색
   ]
 }
 ```
@@ -52,6 +52,10 @@ curl -s -X POST http://localhost:8080/render -H 'Content-Type: application/json'
 | `shake` | 오려낸 조각이 살짝 떠서 좌우로 짧게 흔들리고 쉬기를 반복한다 |
 | `zoom-box` | zoom + 조각에 테두리 |
 | `marker` | 객체 위에 형광펜을 긋는다. 가장자리가 울퉁불퉁하고 살짝 기울며, 넓고 높은 상자(여러 줄 텍스트)는 줄마다 왼쪽에서 오른쪽으로 긋는다. 색은 `color`(기본 노랑) |
+| `circle` | 펜으로 객체 둘레를 한 바퀴 조금 넘게 둘러 그린다. 두 바퀴째가 살짝 바깥으로 벗어나 손으로 그린 느낌. 색은 `color`(기본 빨강) |
+| `underline` | 객체 아래쪽에 손글씨 밑줄 한 줄을 왼쪽에서 오른쪽으로 긋는다. 형광펜이 무거울 때. 색은 `color`(기본 빨강) |
+| `glow` | 부드러운 빛 테두리가 숨 쉬듯 두세 번 커졌다 작아진다. 약한 단계의 강조. 색은 `color`(기본 호박색) |
+| `spotlight` | 객체만 남기고 화면 전체를 어둡게 덮었다가 걷는다. 어두운 슬라이드에서도 통한다. 같은 시간에 두 객체에 걸면 서로를 어둡게 하니 겹치지 말 것 |
 
 **로컬과 운영을 구분하는 스위치는 없다.** 값의 형태가 처리 방식을 정한다. `slideImage`/`audio` 가 `http(s)://` 로 시작하면 다운로드하고, 아니면 서버가 읽을 수 있는 절대경로로 본다. `outputPath` 는 항상 서버가 쓸 수 있는 절대경로다. 로컬은 내 디스크 경로, 운영은 NAS URL(입력)과 파드에 마운트된 NAS 경로(출력)가 된다. 요청 필드와 내부 입력 이름의 대응은 `render.service.ts` 의 `fetchInputs({ slide: dto.slideImage, audio: dto.audio })` 한 줄에만 있다.
 
@@ -124,7 +128,7 @@ cp .env.example .env    # 로컬. 필요한 값만 고친다
 
 쿠버네티스가 넘길 것: `NODE_ENV=production`, `PORT`, `LOG_LEVEL`, `RENDER_WORKERS`(파드 CPU 수에 맞춤, 권장 2). 나머지는 기본값.
 
-코드 상수로 남긴 것: 강조 테두리 기본색·두께·형광펜 기본색([composition.builder.ts](src/hyperframes/composition.builder.ts)), 애니메이션 배율·진폭·리듬([effects/](src/hyperframes/effects) 각 파일 상단).
+코드 상수로 남긴 것: 강조 테두리 기본색·두께와 형광펜·펜·글로우 기본색([composition.builder.ts](src/hyperframes/composition.builder.ts)), 애니메이션 배율·진폭·리듬([effects/](src/hyperframes/effects) 각 파일 상단).
 
 ## 구조
 
@@ -149,7 +153,7 @@ src/
    ├─ hyperframes.service.ts      # @hyperframes/producer 호출 + 경고 검사
    ├─ composition.builder.ts      # 프로젝트 폴더 구성 결정: index.html, 데이터 스크립트, 자산 이름
    ├─ template.html               # 컴포지션 마크업
-   └─ effects/                    # 브라우저에서 도는 GSAP 효과. common.js(공통) · box.js · zoom.js · shake.js · marker.js · index.js(진입)
+   └─ effects/                    # 브라우저에서 도는 GSAP 효과. common.js(공통 헬퍼) · box.js · zoom.js · shake.js · marker.js · circle.js · underline.js · glow.js · spotlight.js · index.js(진입)
 ```
 
 요청 1건의 흐름 (`render.service.ts`):
@@ -158,7 +162,7 @@ src/
 ### 새 효과 추가하기
 
 1. [render-request.dto.ts](src/render/dto/render-request.dto.ts) 의 `EFFECTS` 에 이름 추가
-2. [composition.builder.ts](src/hyperframes/composition.builder.ts) 의 `ELEMENT_KIND` 에 요소 종류 추가 (`box` = 테두리 div, `cut` = 객체 영역을 오려낸 조각 div, `marker` = 빈 컨테이너 div. 획은 효과 파일이 그린다)
+2. [composition.builder.ts](src/hyperframes/composition.builder.ts) 의 `ELEMENT_KIND` 에 요소 종류 추가 (`box` = 테두리 div, `cut` = 객체 영역을 오려낸 조각 div, `fx` = 빈 컨테이너 div. 효과 파일이 그려 넣고 색은 `--color` 로 받는다. 펜·곡선·시드 난수 헬퍼는 common.js)
 3. `src/hyperframes/effects/<이름>.js` 에 `window.HL.effects.<이름> = function (tl, o, ctx) { ... }` — GSAP tween 을 `tl` 에 추가한다. 시그니처와 규칙은 [common.js](src/hyperframes/effects/common.js) 머리말 참고
 
 빌더가 폴더를 읽어 script 태그와 복사 목록을 만들므로 template.html 은 손대지 않는다. 새 CSS 가 필요하면 template.html 의 `<style>` 에 추가한다.

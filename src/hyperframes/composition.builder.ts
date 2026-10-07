@@ -4,12 +4,12 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export type Effect = 'box' | 'zoom' | 'shake' | 'zoom-box' | 'marker';
+export type Effect = 'box' | 'zoom' | 'shake' | 'zoom-box' | 'marker' | 'circle' | 'underline' | 'glow' | 'spotlight';
 
 /** px 로 변환된 객체. effects/index.js 가 window.__SLIDE__.objects 로 받는 형태 */
 export interface PxObject {
   id: string;
-  /** 효과 요소(div)의 id. box 는 테두리(.hl), 나머지는 오려낸 조각(.cut) */
+  /** 효과 요소(div)의 id. box 는 테두리(.hl), zoom/shake 는 오려낸 조각(.cut), 나머지는 빈 컨테이너(.fx) */
   domId: string;
   left: number;
   top: number;
@@ -18,7 +18,7 @@ export interface PxObject {
   start: number;
   end: number;
   effect: Effect;
-  /** 테두리·형광펜 색. 없으면 효과별 기본색 (DEFAULT_HIGHLIGHT_COLOR / DEFAULT_MARKER_COLOR) */
+  /** 색. 없으면 효과별 기본색 (DEFAULT_HIGHLIGHT_COLOR, DEFAULT_MARKER_COLOR, DEFAULT_PEN_COLOR, DEFAULT_GLOW_COLOR) */
   color?: string;
 }
 
@@ -52,20 +52,37 @@ export const DEFAULT_HIGHLIGHT_COLOR = '#FF3B30';
 export const BORDER_PX = 6;
 /** 형광펜(marker) 기본색. 요청의 color 가 없을 때 쓴다 */
 export const DEFAULT_MARKER_COLOR = '#FFE23A';
+/** 펜 효과(circle, underline) 기본색 */
+export const DEFAULT_PEN_COLOR = '#E8453C';
+/** glow 기본색 */
+export const DEFAULT_GLOW_COLOR = '#FFB300';
 
 /**
  * 효과별로 어떤 요소를 만들지. 새 효과를 추가할 때 여기에 한 줄, effects/<이름>.js 에 함수 하나, DTO 의 EFFECTS 에 이름 하나.
  * - box: 객체 위치에 테두리 div (.hl)
  * - cut: 슬라이드 이미지를 배경으로 깔고 객체 영역만 보이게 자른 조각 div (.cut). 조각만 transform 되므로 배경은 그대로
- * - marker: 객체 위치에 빈 컨테이너 div (.marker). 형광펜 획(SVG)은 effects/marker.js 가 브라우저에서 그려 넣는다.
- *   마크업에 SVG 를 직접 쓰지 않으므로 컴파일러가 손댈 것이 없고, 획 모양 상수가 효과 파일 한 곳에 모인다
+ * - fx: 객체 위치에 빈 컨테이너 div (.fx.<효과>). 효과 스크립트가 브라우저에서 그려 넣는다 (marker 는 형광펜 SVG, circle/underline 은
+ *   펜 SVG, glow/spotlight 는 그림자). 마크업에 SVG 를 직접 쓰지 않으므로 컴파일러가 손댈 것이 없고, 모양 상수가 효과 파일 한 곳에
+ *   모인다. 색은 --color 로 넘긴다 (요청의 color, 없으면 FX_DEFAULT_COLOR)
  */
-const ELEMENT_KIND: Record<Effect, 'box' | 'cut' | 'marker'> = {
+const ELEMENT_KIND: Record<Effect, 'box' | 'cut' | 'fx'> = {
   box: 'box',
   zoom: 'cut',
   shake: 'cut',
   'zoom-box': 'cut',
-  marker: 'marker',
+  marker: 'fx',
+  circle: 'fx',
+  underline: 'fx',
+  glow: 'fx',
+  spotlight: 'fx',
+};
+
+/** fx 효과의 기본색. 없는 효과(spotlight)는 색을 쓰지 않는다 (요청의 color 도 무시) */
+const FX_DEFAULT_COLOR: Partial<Record<Effect, string>> = {
+  marker: DEFAULT_MARKER_COLOR,
+  circle: DEFAULT_PEN_COLOR,
+  underline: DEFAULT_PEN_COLOR,
+  glow: DEFAULT_GLOW_COLOR,
 };
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -136,9 +153,11 @@ function objectDiv(o: PxObject, slideSrc: string): string {
   if (ELEMENT_KIND[o.effect] === 'box') {
     return `      <div id="${o.domId}" class="clip hl" ${timing} style="${rect};border-color:${color}"></div>`;
   }
-  if (ELEMENT_KIND[o.effect] === 'marker') {
-    // 색만 CSS 변수로 넘긴다. 획은 effects/marker.js 가 그린다
-    return `      <div id="${o.domId}" class="clip marker" ${timing} style="${rect};--marker:${o.color ?? DEFAULT_MARKER_COLOR}"></div>`;
+  if (ELEMENT_KIND[o.effect] === 'fx') {
+    // 색만 CSS 변수로 넘긴다. 그리는 건 effects/<효과>.js
+    const fxDefault = FX_DEFAULT_COLOR[o.effect];
+    const style = fxDefault ? `${rect};--color:${o.color ?? fxDefault}` : rect;
+    return `      <div id="${o.domId}" class="clip fx ${o.effect}" ${timing} style="${style}"></div>`;
   }
   // background-position 을 -left,-top 으로 두면 배경(슬라이드 전체 크기)에서 정확히 그 영역이 보인다
   const cls = o.effect === 'zoom-box' ? 'clip cut ring' : 'clip cut';

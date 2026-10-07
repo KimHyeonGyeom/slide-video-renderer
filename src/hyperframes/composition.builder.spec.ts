@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { CompositionBuilder, DEFAULT_HIGHLIGHT_COLOR, DEFAULT_MARKER_COLOR, type PxObject } from './composition.builder.js';
+import {
+  CompositionBuilder,
+  DEFAULT_GLOW_COLOR,
+  DEFAULT_HIGHLIGHT_COLOR,
+  DEFAULT_MARKER_COLOR,
+  DEFAULT_PEN_COLOR,
+  type PxObject,
+} from './composition.builder.js';
 
 const base = {
   inputs: { slide: '/tmp/in/slide.jpg', audio: '/tmp/in/audio.mp3' },
@@ -36,6 +43,10 @@ describe('CompositionBuilder', () => {
         'assets/effects/zoom.js',
         'assets/effects/shake.js',
         'assets/effects/marker.js',
+        'assets/effects/circle.js',
+        'assets/effects/underline.js',
+        'assets/effects/glow.js',
+        'assets/effects/spotlight.js',
       ]),
     );
     const html = files[0].content!;
@@ -63,15 +74,25 @@ describe('CompositionBuilder', () => {
     expect(html).toContain('--ring:#00FF00');
   });
 
-  it('marker 는 빈 컨테이너 div 에 형광펜 색만 넘긴다 (획은 effects/marker.js 가 그린다)', async () => {
+  it('fx 효과(marker·circle·glow 등)는 빈 컨테이너 div 에 색만 --color 로 넘긴다 (그리는 건 효과 스크립트)', async () => {
     const marker: PxObject = { ...box, id: 'c', domId: 'hl-2', effect: 'marker' };
     const colored: PxObject = { ...marker, id: 'd', domId: 'hl-3', color: '#FF8BB5' };
-    const files = await new CompositionBuilder().build({ ...base, objects: [marker, colored] });
+    const circle: PxObject = { ...marker, id: 'e', domId: 'hl-4', effect: 'circle' };
+    const glow: PxObject = { ...marker, id: 'f', domId: 'hl-5', effect: 'glow' };
+    const spotlight: PxObject = { ...marker, id: 'g', domId: 'hl-6', effect: 'spotlight', color: '#123456' };
+    const files = await new CompositionBuilder().build({ ...base, objects: [marker, colored, circle, glow, spotlight] });
     const html = files[0].content!;
-    expect(html).toContain(`id="hl-2" class="clip marker"`);
-    expect(html).toContain(`--marker:${DEFAULT_MARKER_COLOR}`);
-    expect(html).toContain(`id="hl-3" class="clip marker"`);
-    expect(html).toContain('--marker:#FF8BB5');
+    const line = (id: string) => html.split('\n').find((l) => l.includes(`id="${id}"`))!;
+    expect(line('hl-2')).toContain(`class="clip fx marker"`);
+    expect(line('hl-2')).toContain(`--color:${DEFAULT_MARKER_COLOR}`);
+    expect(line('hl-3')).toContain('--color:#FF8BB5');
+    expect(line('hl-4')).toContain(`class="clip fx circle"`);
+    expect(line('hl-4')).toContain(`--color:${DEFAULT_PEN_COLOR}`);
+    expect(line('hl-5')).toContain(`class="clip fx glow"`);
+    expect(line('hl-5')).toContain(`--color:${DEFAULT_GLOW_COLOR}`);
+    // spotlight 는 색을 쓰지 않는다 (요청의 color 도 무시)
+    expect(line('hl-6')).toContain(`class="clip fx spotlight"`);
+    expect(line('hl-6')).not.toContain('--color');
     expect(html).not.toContain('<svg');
   });
 

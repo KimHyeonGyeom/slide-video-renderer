@@ -29,16 +29,19 @@
       .cut.ring {
         box-shadow: 0 0 0 {{BORDER_PX}}px var(--ring), 0 10px 30px rgba(0, 0, 0, 0.35);
       }
-      /* marker: 형광펜. 컨테이너는 비어 있고 획(SVG)은 effects/marker.js 가 그려 넣는다. multiply 라 밑의 글자가 가려지지 않고 겹친 획은 진해진다 */
-      .marker {
+      /* fx: 빈 컨테이너. 효과 스크립트가 그려 넣는다 (marker · circle · underline 은 SVG, glow · spotlight 는 그림자). 색은 --color */
+      .fx {
         position: absolute;
         opacity: 0;
-        mix-blend-mode: multiply;
         pointer-events: none;
       }
-      .marker svg {
+      .fx svg {
         position: absolute;
         overflow: visible;
+      }
+      /* marker: 형광펜. multiply 라 밑의 글자가 가려지지 않고 겹친 획은 진해진다 */
+      .fx.marker {
+        mix-blend-mode: multiply;
       }
     </style>
   </head>
