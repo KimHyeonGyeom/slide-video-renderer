@@ -29,6 +29,22 @@
       .cut.ring {
         box-shadow: 0 0 0 {{BORDER_PX}}px var(--ring), 0 10px 30px rgba(0, 0, 0, 0.35);
       }
+      /* underline / underline-star: 손으로 그은 밑줄(+별). path 는 스테이지 좌표(viewBox = 요소 위치·크기), 색은 color.
+         pathLength="100" 이라 점선 100 = 전체 길이. 처음엔 오프셋 100 으로 안 보이고 effects/underline.js 가 0 으로 줄이며 그린다 */
+      .ul {
+        position: absolute;
+        opacity: 0;
+        overflow: visible;
+      }
+      .ul path {
+        fill: none;
+        stroke: currentColor;
+        stroke-width: {{BORDER_PX}}px;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-dasharray: 100;
+        stroke-dashoffset: 100;
+      }
     </style>
   </head>
   <body>
