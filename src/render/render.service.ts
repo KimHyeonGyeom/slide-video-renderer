@@ -61,7 +61,9 @@ export class RenderService {
       const durationSec = await this.probeDuration(inputs.audio);
       const { objects, warnings } = mapSlideObjects(dto.objects, durationSec, EMU_PER_PX);
 
-      await ws.materialize(await this.builder.build({ inputs, objects, durationSec, width: WIDTH, height: HEIGHT, fps: FPS }));
+      const composition = await this.builder.build({ inputs, objects, durationSec, width: WIDTH, height: HEIGHT, fps: FPS });
+      warnings.push(...composition.warnings);
+      await ws.materialize(composition.files);
 
       const timing = await this.renderQueued(ws, clientSignal, log);
       warnings.push(...timing.engineWarnings);

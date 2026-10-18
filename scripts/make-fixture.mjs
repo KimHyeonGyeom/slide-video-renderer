@@ -29,8 +29,9 @@ const objects = [
   },
   { id: 'chart', left: 1524000, top: 2286000, width: 4572000, height: 3048000, start: 3.5, end: 6.5, effect: 'zoom-box' },
   { id: 'shape', left: 7620000, top: 2743200, width: 3048000, height: 1524000, start: 6.8, end: 9.5, effect: 'shake' },
+  { id: 'label', left: 7620000, top: 4953000, width: 3048000, height: 457200, start: 1.0, end: 4.5, effect: 'underline-star' },
 ];
-const fills = { title: '#3b82f6', chart: '#10b981', shape: '#f59e0b' };
+const fills = { title: '#3b82f6', chart: '#10b981', shape: '#f59e0b', label: '#8b5cf6' };
 
 // slide.png — 회색 배경 + 객체 위치에 색 박스
 const rects = objects
@@ -51,7 +52,7 @@ await sharp(Buffer.from(svg)).png().toFile(path.join(outDir, 'slide.png'));
 const mp3 = path.join(outDir, 'audio.mp3');
 const aiff = path.join(outDir, 'audio.aiff');
 const text =
-  '이 슬라이드는 강조 효과 테스트입니다. 먼저 제목에 테두리가 표시되고, 다음으로 차트 영역이 확대되며, 마지막으로 오른쪽 도형이 깜빡입니다.';
+  '이 슬라이드는 강조 효과 테스트입니다. 먼저 제목에 테두리가 표시되고 아래 라벨에 밑줄과 별이 그려집니다. 다음으로 차트 영역이 확대되며, 마지막으로 오른쪽 도형이 흔들립니다.';
 try {
   await run('say', ['-v', 'Yuna', '-o', aiff, text]);
   await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', aiff, mp3]);

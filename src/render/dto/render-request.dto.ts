@@ -17,12 +17,14 @@ import {
 } from 'class-validator';
 
 /**
- * box      객체 주위 테두리가 나타났다 사라진다
- * zoom     객체 영역을 오려낸 조각이 제자리에서 서서히 커졌다가 되돌아온다
- * shake    오려낸 조각이 살짝 떠서 좌우로 짧게 흔들린다
- * zoom-box zoom + 조각에 테두리
+ * box            객체 주위 테두리가 나타났다 사라진다
+ * zoom           객체 영역을 오려낸 조각이 제자리에서 서서히 커졌다가 되돌아온다
+ * shake          오려낸 조각이 살짝 떠서 좌우로 짧게 흔들린다
+ * zoom-box       zoom + 조각에 테두리
+ * underline      객체 아래에 손으로 그은 듯한 밑줄이 왼쪽에서 오른쪽으로 그려진다
+ * underline-star underline + 밑줄 끝에 별 하나가 한 획으로 그려진다
  */
-export const EFFECTS = ['box', 'zoom', 'shake', 'zoom-box'] as const;
+export const EFFECTS = ['box', 'zoom', 'shake', 'zoom-box', 'underline', 'underline-star'] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 /** 강조할 슬라이드 객체 하나. 좌표는 EMU (python-pptx 의 shape.left/top/width/height 그대로). */
@@ -63,12 +65,12 @@ export class SlideObjectDto {
   @IsPositive()
   end: number;
 
-  /** 효과: box | zoom | shake | zoom-box. 객체끼리 시간이 겹쳐도 된다 */
+  /** 효과: box | zoom | shake | zoom-box | underline | underline-star. 객체끼리 시간이 겹쳐도 된다 */
   @ApiProperty({ enum: EFFECTS })
   @IsIn(EFFECTS)
   effect: Effect;
 
-  /** 테두리 색 (#RRGGBB). box / zoom-box 에서만 쓰이고 없으면 서버 기본색 */
+  /** 테두리·선 색 (#RRGGBB). box / zoom-box / underline / underline-star 에서 쓰이고 없으면 서버 기본색 */
   @IsOptional()
   @Matches(/^#[0-9a-fA-F]{6}$/)
   color?: string;
